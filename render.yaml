@@ -1,0 +1,34 @@
+# render.yaml
+services:
+  - type: web
+    name: whatsapp-handoff-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn 'app:create_app()' --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.0
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: MONGO_URI
+        sync: false
+      - key: DB_NAME
+        value: minhacolect
+      - key: FLASK_APP
+        value: app:create_app()
+      - key: FLASK_DEBUG
+        value: False
+      - key: FLASK_SECRET_KEY
+        generateValue: true
+      - key: BASE_URL
+        fromService:
+          name: whatsapp-handoff-bot
+          type: web
+          property: url
+      # Descomente quando estiver pronto para usar o Twilio em produção
+      # - key: TWILIO_ACCOUNT_SID
+      #   sync: false
+      # - key: TWILIO_AUTH_TOKEN
+      #   sync: false
+      # - key: TWILIO_WHATSAPP_NUMBER
+      #   sync: false

@@ -1,0 +1,159 @@
+# /home/ubuntu/whatsapp_handoff_project/app/agent/routes.py
+import os
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash
+from werkzeug.security import check_password_hash, generate_password_hash # Para senhas, se implementado
+from functools import wraps
+from bson import ObjectId
+
+# Importar módulos do projeto
+from ..db import database # Usando caminho relativo para importar de um diretório pai
+from ..utils import twilio_utils # Assumindo que teremos um utilitário Twilio para enviar mensagens
+
+agent_bp = Blueprint(
+    "agent_bp", __name__,
+    template_folder="templates",
+    static_folder="static",
+    url_prefix="/agent" # Todas as rotas aqui começarão com /agent
+)
+
+# Simulação de banco de dados de agentes (em um app real, use um banco de dados)
+# Senhas devem ser hasheadas! Exemplo: generate_password_hash("password")
+AGENTS_DB = {
+    "agent1@equinos.com": {
+        "name": "Agente Um",
+        "password_hash": generate_password_hash("agente123"), # Use senhas hasheadas!
+        "id": "agent_001"
+    }
+}
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "agent_id" not in session:
+            flash("Você precisa estar logado para acessar esta página.", "warning")
+            return redirect(url_for("agent_bp.login"))
+        return f(*args, **kwargs)
+    return decorated_function
+
+@agent_bp.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form.get("email")
+        password = request.form.get("password")
+        agent = AGENTS_DB.get(email)
+
+        if agent and check_password_hash(agent["password_hash"], password):
+            session["agent_id"] = agent["id"]
+            session["agent_name"] = agent["name"]
+            flash("Login realizado com sucesso!", "success")
+            return redirect(url_for("agent_bp.dashboard"))
+        else:
+            flash("Email ou senha inválidos.", "danger")
+    return render_template("agent_login.html")
+
+@agent_bp.route("/logout")
+@login_required
+def logout():
+    session.pop("agent_id", None)
+    session.pop("agent_name", None)
+    flash("Logout realizado com sucesso.", "info")
+    return redirect(url_for("agent_bp.login"))
+
+@agent_bp.route("/dashboard")
+@login_required
+def dashboard():
+    # Buscar conversas que estão aguardando agente ou atribuídas ao agente logado (se implementado)
+    # Por simplicidade, vamos buscar todas que estão AWAITING_AGENT ou AGENT_ACTIVE
+    conversations_awaiting = database.get_conversations_by_status([database.STATUS_AWAITING_AGENT])
+    # Em um sistema mais complexo, você filtraria por agent_id aqui
+    conversations_active = database.get_conversations_by_status([database.STATUS_AGENT_ACTIVE]) 
+    
+    # Converter ObjectId para string para o template
+    for conv in conversations_awaiting:
+        conv["_id"] = str(conv["_id"])
+    for conv in conversations_active:
+        conv["_id"] = str(conv["_id"])
+
+    return render_template("agent_dashboard.html", 
+                             conversations_awaiting=conversations_awaiting,
+                             conversations_active=conversations_active)
+
+@agent_bp.route("/conversation/<conversation_id_str>")
+@login_required
+def view_conversation(conversation_id_str):
+    conversation = database.get_conversation_by_id(conversation_id_str)
+    if not conversation:
+        flash("Conversa não encontrada.", "danger")
+        return redirect(url_for("agent_bp.dashboard"))
+    
+    # Converter ObjectId para string para o template
+    conversation["_id"] = str(conversation["_id"])
+    for msg in conversation.get("messages", []):
+        msg["message_id"] = str(msg["message_id"])
+        
+    return render_template("agent_conversation.html", conversation=conversation)
+
+@agent_bp.route("/conversation/<conversation_id_str>/take", methods=["POST"])
+@login_required
+def take_conversation(conversation_id_str):
+    agent_id = session.get("agent_id")
+    success = database.set_conversation_status(conversation_id_str, database.STATUS_AGENT_ACTIVE, agent_id=agent_id)
+    if success:
+        flash("Conversa assumida com sucesso!", "success")
+        # Notificar o usuário que um agente assumiu (opcional)
+        # twilio_utils.send_whatsapp_message(conversation.phone_number, f"Olá! Sou {session.get('agent_name')}, seu atendente. Como posso ajudar?")
+    else:
+        flash("Não foi possível assumir a conversa.", "danger")
+    return redirect(url_for("agent_bp.view_conversation", conversation_id_str=conversation_id_str))
+
+@agent_bp.route("/conversation/<conversation_id_str>/send", methods=["POST"])
+@login_required
+def send_agent_message(conversation_id_str):
+    agent_id = session.get("agent_id")
+    agent_name = session.get("agent_name", "Atendente")
+    message_text = request.form.get("message_text")
+
+    if not message_text:
+        flash("A mensagem não pode estar vazia.", "warning")
+        return redirect(url_for("agent_bp.view_conversation", conversation_id_str=conversation_id_str))
+
+    conversation = database.get_conversation_by_id(conversation_id_str)
+    if not conversation:
+        flash("Conversa não encontrada.", "danger")
+        return redirect(url_for("agent_bp.dashboard"))
+
+    # Salvar mensagem do agente no banco de dados
+    database.save_message(conversation["phone_number"], database.SENDER_AGENT, message_text, conversation_id=conversation_id_str)
+
+    # Enviar mensagem para o usuário via Twilio
+    # Você precisará implementar twilio_utils.py com uma função send_whatsapp_message
+    try:
+        # Supondo que twilio_utils.send_whatsapp_message exista e funcione
+        # success_twilio = twilio_utils.send_whatsapp_message(conversation["phone_number"], message_text)
+        # if not success_twilio:
+        #     flash("Mensagem salva no histórico, mas falha ao enviar via WhatsApp.", "warning")
+        # else:
+        #     flash("Mensagem enviada com sucesso!", "success")
+        print(f"SIMULAÇÃO: Agente {agent_name} enviou para {conversation['phone_number']}: {message_text}")
+        flash("Mensagem enviada (simulação)!", "success")
+
+    except Exception as e:
+        flash(f"Erro ao enviar mensagem via WhatsApp: {e}", "danger")
+        print(f"Erro Twilio: {e}")
+
+    return redirect(url_for("agent_bp.view_conversation", conversation_id_str=conversation_id_str))
+
+@agent_bp.route("/conversation/<conversation_id_str>/resolve", methods=["POST"])
+@login_required
+def resolve_conversation(conversation_id_str):
+    success = database.set_conversation_status(conversation_id_str, database.STATUS_RESOLVED)
+    if success:
+        flash("Conversa marcada como resolvida!", "success")
+        # Notificar o usuário que a conversa foi resolvida (opcional)
+        # twilio_utils.send_whatsapp_message(conversation.phone_number, "Sua solicitação foi resolvida. Obrigado por contatar a Equinos Seguros!")
+    else:
+        flash("Não foi possível resolver a conversa.", "danger")
+    return redirect(url_for("agent_bp.dashboard"))
+
+# É importante registrar este blueprint na aplicação Flask principal (em app/main.py ou app/__init__.py)
+

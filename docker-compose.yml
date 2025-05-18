@@ -1,0 +1,46 @@
+# /home/ubuntu/whatsapp_handoff_project/docker-compose.yml
+version: "3.8"
+
+services:
+  whatsapp_bot_app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: whatsapp_bot_service
+    restart: unless-stopped
+    env_file:
+      - .env # Carrega variáveis do arquivo .env
+    ports:
+      - "${PORT:-5000}:5000" # Usa a porta do .env ou 5000 como padrão
+    volumes:
+      - ./app/static_bot_audio:/app/app/static_bot_audio # Monta a pasta de áudios do bot para persistência ou acesso externo se necessário
+      # Em desenvolvimento, você pode querer montar o código fonte para live reload:
+      # - ./app:/app/app
+    depends_on:
+      - mongo
+    networks:
+      - app_network
+
+  mongo:
+    image: mongo:latest
+    container_name: mongodb_service
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db # Volume para persistir os dados do MongoDB
+    environment:
+      # MONGO_INITDB_ROOT_USERNAME: root # Opcional: configure usuário e senha para o MongoDB
+      # MONGO_INITDB_ROOT_PASSWORD: example
+      MONGO_INITDB_DATABASE: ${DB_NAME:-whatsapp_handoff_db} # Cria o banco de dados se não existir
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    driver: bridge
+
+volumes:
+  mongo_data:
+    driver: local
+

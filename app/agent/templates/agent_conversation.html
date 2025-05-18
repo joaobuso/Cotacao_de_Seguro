@@ -1,0 +1,122 @@
+{% extends "agent_base.html" %}
+
+{% block title %}Conversa com {{ conversation.phone_number }} - Equinos Seguros{% endblock %}
+
+{% block head_extra %}
+<style>
+    .chat-container {
+        max-height: 500px;
+        overflow-y: auto;
+        border: 1px solid #ccc;
+        padding: 10px;
+        margin-bottom: 20px;
+    }
+    .message {
+        margin-bottom: 10px;
+        padding: 8px;
+        border-radius: 5px;
+    }
+    .message.user {
+        background-color: #e1ffc7;
+        text-align: left;
+        margin-left: auto;
+        max-width: 70%;
+        float: right; /* Faz a mensagem do usuário flutuar para a direita */
+        clear: both; /* Garante que a próxima mensagem comece abaixo */
+    }
+    .message.bot {
+        background-color: #f1f0f0;
+        text-align: left;
+        max-width: 70%;
+        float: left;
+        clear: both;
+    }
+    .message.agent {
+        background-color: #c7e1ff; /* Azul claro para o agente */
+        text-align: left;
+        max-width: 70%;
+        float: left;
+        clear: both;
+    }
+    .message .sender {
+        font-weight: bold;
+        font-size: 0.9em;
+        color: #555;
+    }
+    .message .timestamp {
+        font-size: 0.8em;
+        color: #777;
+        display: block;
+        margin-top: 3px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3>Conversa com: {{ conversation.phone_number }}</h3>
+        <div>
+            <a href="{{ url_for(\'agent_bp.dashboard\') }}" class="btn btn-secondary btn-sm">Voltar ao Dashboard</a>
+        </div>
+    </div>
+    <p><strong>Status da Conversa:</strong> <span class="badge badge-info">{{ conversation.status }}</span></p>
+    {% if conversation.agent_id %}
+        <p><strong>Atribuída a:</strong> {{ conversation.agent_id }}</p>
+    {% endif %}
+
+    <div class="chat-container" id="chat-container">
+        {% if conversation.messages %}
+            {% for msg in conversation.messages %}
+                <div class="message {% if msg.sender_type == \'USER\'%}user{% elif msg.sender_type == \'BOT\'%}bot{% elif msg.sender_type == \'AGENT\'%}agent{% endif %}">
+                    <span class="sender">{{ msg.sender_type }}</span>
+                    <p class="mb-0">{{ msg.text_content }}</p>
+                    {% if msg.media_url %}
+                        <small><a href="{{ msg.media_url }}" target="_blank">Ver Mídia</a></small>
+                    {% endif %}
+                    <span class="timestamp">{{ msg.timestamp.strftime(\"%d/%m/%Y %H:%M:%S\") if msg.timestamp else \'N/A\' }}</span>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p>Nenhuma mensagem nesta conversa ainda.</p>
+        {% endif %}
+    </div>
+
+    {% if conversation.status == database.STATUS_AWAITING_AGENT %}
+        <form method="POST" action="{{ url_for(\'agent_bp.take_conversation\', conversation_id_str=conversation._id) }}" class="mb-3">
+            <button type="submit" class="btn btn-success">Assumir Conversa</button>
+        </form>
+    {% elif conversation.status == database.STATUS_AGENT_ACTIVE %}
+        {% if conversation.agent_id == session.get(\'agent_id\') %}
+            <form method="POST" action="{{ url_for(\'agent_bp.send_agent_message\', conversation_id_str=conversation._id) }}" class="mb-3">
+                <div class="form-group">
+                    <label for="message_text">Sua Resposta:</label>
+                    <textarea class="form-control" id="message_text" name="message_text" rows="3" required></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Enviar Mensagem</button>
+            </form>
+            <form method="POST" action="{{ url_for(\'agent_bp.resolve_conversation\', conversation_id_str=conversation._id) }}" class="mt-2">
+                <button type="submit" class="btn btn-warning">Marcar como Resolvida</button>
+            </form>
+        {% else %}
+            <p class="alert alert-info">Esta conversa está sendo atendida por outro agente ({{ conversation.agent_id }}).</p>
+        {% endif %}
+    {% elif conversation.status == database.STATUS_RESOLVED %}
+         <p class="alert alert-secondary">Esta conversa foi marcada como resolvida.</p>
+    {% elif conversation.status == database.STATUS_BOT_ACTIVE %}
+         <p class="alert alert-info">Esta conversa está atualmente com o bot. Se precisar intervir, o status precisa ser alterado para AGENT_ACTIVE ou AWAITING_AGENT.</p>
+    {% endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+    // Auto-scroll para a última mensagem
+    var chatContainer = document.getElementById(\'chat-container\');
+    if (chatContainer) {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+</script>
+{% endblock %}
+

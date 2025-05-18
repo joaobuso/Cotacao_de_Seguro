@@ -81,18 +81,17 @@ def configure_routes(app):
         database.save_message(phone_number, database.SENDER_BOT, bot_reply_text, conversation_id=conversation_id)
 
         # Tentar gerar e enviar áudio da resposta do bot
+        # Tentar gerar e enviar áudio da resposta do bot
         audio_filename = audio_processor.generate_bot_audio_response(bot_reply_text)
         if audio_filename:
             audio_url = url_for("static_audio_files", filename=audio_filename, _external=True)
             if BASE_URL.startswith("https"): 
                 audio_url = audio_url.replace("http://", "https://", 1)
-            
-            if twilio_resp.children and hasattr(twilio_resp.children[-1], 'media') and not twilio_resp.children[-1].media_url:
-                twilio_resp.children[-1].media(audio_url)
-            else:
-                audio_message_tag = twilio_resp.message()
-                audio_message_tag.media(audio_url)
-                print(f"Áudio da resposta do bot enviado: {audio_url}")
+
+            # Criar nova mensagem e anexar mídia corretamente
+            audio_message_tag = twilio_resp.message()
+            audio_message_tag.media(audio_url)
+            print(f"Áudio da resposta do bot enviado: {audio_url}")
 
         return str(twilio_resp)
 

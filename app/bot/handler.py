@@ -4,15 +4,14 @@ from openai import OpenAI
 from dotenv import load_dotenv
 
 # Carregar variáveis de ambiente
-dotenv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env")
-load_dotenv(dotenv_path=dotenv_path)
+load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     print("AVISO: OPENAI_API_KEY não configurada no .env para o bot handler.")
 
-
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 
 # Palavras-chave para acionar o handoff para um agente humano
 HANDOFF_KEYWORDS = [

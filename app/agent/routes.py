@@ -1,19 +1,18 @@
-# /home/ubuntu/whatsapp_handoff_project/app/agent/routes.py
 import os
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
-from werkzeug.security import check_password_hash, generate_password_hash # Para senhas, se implementado
+from werkzeug.security import check_password_hash, generate_password_hash
 from functools import wraps
 from bson import ObjectId
 
 # Importar módulos do projeto
-from ..db import database # Usando caminho relativo para importar de um diretório pai
-from ..utils import twilio_utils # Assumindo que teremos um utilitário Twilio para enviar mensagens
+from app.db import database
+from app.utils import audio_processor
 
 agent_bp = Blueprint(
     "agent_bp", __name__,
     template_folder="templates",
     static_folder="static",
-    url_prefix="/agent" # Todas as rotas aqui começarão com /agent
+    url_prefix="/agent"
 )
 
 # Simulação de banco de dados de agentes (em um app real, use um banco de dados)
@@ -21,7 +20,7 @@ agent_bp = Blueprint(
 AGENTS_DB = {
     "agent1@equinos.com": {
         "name": "Agente Um",
-        "password_hash": generate_password_hash("agente123"), # Use senhas hasheadas!
+        "password_hash": generate_password_hash("agente123"),
         "id": "agent_001"
     }
 }
@@ -62,8 +61,7 @@ def logout():
 @agent_bp.route("/dashboard")
 @login_required
 def dashboard():
-    # Buscar conversas que estão aguardando agente ou atribuídas ao agente logado (se implementado)
-    # Por simplicidade, vamos buscar todas que estão AWAITING_AGENT ou AGENT_ACTIVE
+    # Buscar conversas que estão aguardando agente ou atribuídas ao agente logado
     conversations_awaiting = database.get_conversations_by_status([database.STATUS_AWAITING_AGENT])
     # Em um sistema mais complexo, você filtraria por agent_id aqui
     conversations_active = database.get_conversations_by_status([database.STATUS_AGENT_ACTIVE]) 
@@ -75,8 +73,8 @@ def dashboard():
         conv["_id"] = str(conv["_id"])
 
     return render_template("agent_dashboard.html", 
-                             conversations_awaiting=conversations_awaiting,
-                             conversations_active=conversations_active)
+                           conversations_awaiting=conversations_awaiting,
+                           conversations_active=conversations_active)
 
 @agent_bp.route("/conversation/<conversation_id_str>")
 @login_required
@@ -154,6 +152,3 @@ def resolve_conversation(conversation_id_str):
     else:
         flash("Não foi possível resolver a conversa.", "danger")
     return redirect(url_for("agent_bp.dashboard"))
-
-# É importante registrar este blueprint na aplicação Flask principal (em app/main.py ou app/__init__.py)
-

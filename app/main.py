@@ -17,7 +17,7 @@ def configure_routes(app):
     # Configurações
     FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "super-secret-key-for-dev")
     app.secret_key = FLASK_SECRET_KEY
-    BASE_URL = os.getenv("BASE_URL", "http://localhost:5000" )
+    BASE_URL = os.getenv("BASE_URL", "http://localhost:5000")
     
     @app.route("/webhook", methods=["POST"])
     def whatsapp_webhook():
@@ -84,8 +84,8 @@ def configure_routes(app):
         audio_filename = audio_processor.generate_bot_audio_response(bot_reply_text)
         if audio_filename:
             audio_url = url_for("static_audio_files", filename=audio_filename, _external=True)
-            if BASE_URL.startswith("https" ): 
-                audio_url = audio_url.replace("http://", "https://", 1 )
+            if BASE_URL.startswith("https"): 
+                audio_url = audio_url.replace("http://", "https://", 1)
             
             if twilio_resp.children and hasattr(twilio_resp.children[-1], 'media') and not twilio_resp.children[-1].media_url:
                 twilio_resp.children[-1].media(audio_url)
@@ -115,6 +115,6 @@ if __name__ == "__main__":
     DEBUG = os.getenv("FLASK_DEBUG", "True") == "True"
     
     print(f"Iniciando Flask app em modo de desenvolvimento.")
-    print(f"Para testar o webhook, configure o Twilio para POST em http://localhost:{PORT}/webhook" )
+    print(f"Para testar o webhook, configure o Twilio para POST em http://localhost:{PORT}/webhook")
     
     app.run(host="0.0.0.0", port=PORT, debug=DEBUG)

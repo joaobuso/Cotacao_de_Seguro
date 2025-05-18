@@ -1,10 +1,14 @@
 Flask==2.3.3
 python-dotenv==1.0.0
-requests==2.31.0
-openai==1.70.0
-twilio==8.9.0
-pymongo==4.6.1
-Werkzeug==2.3.7
-# Adicione outras dependências que seu projeto possa ter, como gunicorn para produção
+pymongo==4.5.0
+twilio==8.5.0
 gunicorn==21.2.0
-
+openai==1.70.0
+gTTS==2.3.2
+requests==2.31.0
+Werkzeug==2.3.7
+Jinja2==3.1.2
+MarkupSafe==2.1.3
+itsdangerous==2.1.2
+blinker==1.6.2
+click==8.1.7

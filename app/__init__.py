@@ -1,4 +1,3 @@
-# Inicialização do pacote app
 from flask import Flask
 
 def create_app():

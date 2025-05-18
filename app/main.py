@@ -81,7 +81,6 @@ def configure_routes(app):
         database.save_message(phone_number, database.SENDER_BOT, bot_reply_text, conversation_id=conversation_id)
 
         # Tentar gerar e enviar áudio da resposta do bot
-        # Tentar gerar e enviar áudio da resposta do bot
         audio_filename = audio_processor.generate_bot_audio_response(bot_reply_text)
         if audio_filename:
             audio_url = url_for("static_audio_files", filename=audio_filename, _external=True)

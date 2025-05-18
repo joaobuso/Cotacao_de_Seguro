@@ -124,17 +124,13 @@ def send_agent_message(conversation_id_str):
     database.save_message(conversation["phone_number"], database.SENDER_AGENT, message_text, conversation_id=conversation_id_str)
 
     # Enviar mensagem para o usuário via Twilio
-    # Você precisará implementar twilio_utils.py com uma função send_whatsapp_message
     try:
-        # Supondo que twilio_utils.send_whatsapp_message exista e funcione
-        # success_twilio = twilio_utils.send_whatsapp_message(conversation["phone_number"], message_text)
-        # if not success_twilio:
-        #     flash("Mensagem salva no histórico, mas falha ao enviar via WhatsApp.", "warning")
-        # else:
-        #     flash("Mensagem enviada com sucesso!", "success")
-        print(f"SIMULAÇÃO: Agente {agent_name} enviou para {conversation['phone_number']}: {message_text}")
-        flash("Mensagem enviada (simulação)!", "success")
-
+        from app.utils import twilio_utils
+        success_twilio = twilio_utils.send_whatsapp_message(conversation["phone_number"], message_text)
+        if not success_twilio:
+            flash("Mensagem salva no histórico, mas falha ao enviar via WhatsApp.", "warning")
+        else:
+            flash("Mensagem enviada com sucesso!", "success")
     except Exception as e:
         flash(f"Erro ao enviar mensagem via WhatsApp: {e}", "danger")
         print(f"Erro Twilio: {e}")

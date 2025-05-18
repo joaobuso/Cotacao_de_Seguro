@@ -11,7 +11,8 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     print("AVISO: OPENAI_API_KEY não configurada no .env para o bot handler.")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Palavras-chave para acionar o handoff para um agente humano
 HANDOFF_KEYWORDS = [

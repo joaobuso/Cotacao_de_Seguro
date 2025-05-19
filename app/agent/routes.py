@@ -17,13 +17,21 @@ agent_bp = Blueprint(
 
 # Simulação de banco de dados de agentes (em um app real, use um banco de dados)
 # Senhas devem ser hasheadas! Exemplo: generate_password_hash("password")
-AGENTS_DB = {
-    "agent1@equinos.com": {
-        "name": "Agente Um",
-        "password_hash": generate_password_hash("agente123"),
-        "id": "agent_001"
-    }
-}
+# Carrega lista de agentes definidos no .env
+agent_ids = os.getenv("AGENTS", "").split(",")
+
+AGENTS_DB = {}
+
+for agent in agent_ids:
+    email = os.getenv(f"AGENT_{agent}_EMAIL")
+    name = os.getenv(f"AGENT_{agent}_NAME")
+    pwd_hash = os.getenv(f"AGENT_{agent}_PASSWORD_HASH")
+    if email and name and pwd_hash:
+        AGENTS_DB[email] = {
+            "name": name,
+            "password_hash": pwd_hash,
+            "id": f"agent_{agent}"
+        }
 
 def login_required(f):
     @wraps(f)

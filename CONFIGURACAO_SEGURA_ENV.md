@@ -11,7 +11,7 @@ O projeto requer as seguintes variáveis de ambiente:
 
 2. **MongoDB**
    - `MONGO_URI`: URI de conexão com o MongoDB
-   - `DB_NAME`: Nome do banco de dados (padrão: "minhacolect")
+   - `DB_NAME`: Nome do banco de dados (padrão: "Cotacao_Seguros")
 
 3. **Twilio (para WhatsApp)**
    - `TWILIO_ACCOUNT_SID`: ID da conta Twilio

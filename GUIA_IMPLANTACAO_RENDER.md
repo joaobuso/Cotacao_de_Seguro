@@ -19,7 +19,7 @@ Este documento explica como implantar o chatbot WhatsApp com funcionalidade de h
 5. Configure as variáveis de ambiente:
    - `OPENAI_API_KEY`: Sua chave da OpenAI (já fornecida)
    - `MONGO_URI`: Sua URI do MongoDB (já fornecida, substitua `<db_password>` pela senha real)
-   - `DB_NAME`: minhacolect
+   - `DB_NAME`: Cotacao_Seguros
    - `FLASK_APP`: app:create_app()
    - `FLASK_SECRET_KEY`: Uma chave secreta forte (gerada automaticamente pelo Render)
    - `FLASK_DEBUG`: False

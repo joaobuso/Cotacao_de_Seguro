@@ -13,7 +13,7 @@ services:
       - key: MONGO_URI
         sync: false
       - key: DB_NAME
-        value: minhacolect
+        value: Cotacao_Seguros
       - key: FLASK_APP
         value: app:create_app()
       - key: FLASK_DEBUG

@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 # Importar módulos do projeto
 from .db import database
-from .bot import handler as bot_handler
+from .bot import handler_old as bot_handler
 from .utils import audio_processor
 
 # Carregar variáveis de ambiente

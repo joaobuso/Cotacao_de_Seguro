@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 # Importar módulos do projeto
 from .db import database
 from .bot import handler as bot_handler
-from .utils import audio_processor_melhorado as audio_processor
+from .utils import audio_processor as audio_processor
 
 # Carregar variáveis de ambiente
 dotenv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
@@ -69,7 +69,7 @@ def configure_routes(app):
             print(f"Mensagem de {phone_number} para agente (status: {conversation_status}): {user_message_processed}")
             return str(twilio_resp)
 
-        # Se BOT_ACTIVE, processar com o bot melhorado
+        # Se BOT_ACTIVE, processar com o bot
         bot_reply_text, is_handoff_request, pdf_path = bot_handler.get_bot_response(
             user_message_processed, phone_number, conversation_id
         )

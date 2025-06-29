@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 # Importar módulos do projeto
 from .db import database
 from .bot import handler as bot_handler
-from .utils import audio_processor
+from .utils import audio_processor_melhorado as audio_processor
 
 # Carregar variáveis de ambiente
 dotenv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
@@ -31,6 +31,7 @@ def configure_routes(app):
         if not phone_number:
             return "Webhook Error: Missing sender information", 400
 
+        # Processar mídia (áudio)
         if num_media > 0:
             media_url = request.values.get("MediaUrl0")
             content_type = request.values.get("MediaContentType0", "")
@@ -68,8 +69,10 @@ def configure_routes(app):
             print(f"Mensagem de {phone_number} para agente (status: {conversation_status}): {user_message_processed}")
             return str(twilio_resp)
 
-        # Se BOT_ACTIVE, processar com o bot
-        bot_reply_text, is_handoff_request = bot_handler.get_bot_response(user_message_processed)
+        # Se BOT_ACTIVE, processar com o bot melhorado
+        bot_reply_text, is_handoff_request, pdf_path = bot_handler.get_bot_response(
+            user_message_processed, phone_number, conversation_id
+        )
 
         if is_handoff_request:
             database.set_conversation_status(conversation_id, database.STATUS_AWAITING_AGENT)
@@ -98,14 +101,32 @@ def configure_routes(app):
     @app.route("/static_audio/<path:filename>")
     def static_audio_files(filename):
         return send_from_directory(app.static_folder, filename)
+    
+    # Rota para servir arquivos estáticos (PDFs, etc.)
+    @app.route("/static_files/<path:filename>")
+    def static_files(filename):
+        static_files_dir = os.path.join(app.root_path, "static_files")
+        return send_from_directory(static_files_dir, filename)
 
     @app.route("/")
     def home():
-        return "Serviço de Webhook para WhatsApp Handoff está operacional!", 200
+        return "Serviço de Webhook para WhatsApp com Cotação de Seguros está operacional!", 200
+    
+    @app.route("/health")
+    def health_check():
+        """Endpoint para verificação de saúde do serviço."""
+        return {"status": "healthy", "service": "whatsapp-insurance-bot"}, 200
 
 # Esta parte só será executada se o arquivo for executado diretamente, não quando importado
 if __name__ == "__main__":
     from flask import Flask
+    
+    # Criar diretórios necessários
+    static_audio_dir = os.path.join(os.path.dirname(__file__), "static_bot_audio")
+    static_files_dir = os.path.join(os.path.dirname(__file__), "static_files")
+    os.makedirs(static_audio_dir, exist_ok=True)
+    os.makedirs(static_files_dir, exist_ok=True)
+    
     app = Flask(__name__, static_folder="static_bot_audio")
     configure_routes(app)
     
@@ -116,3 +137,4 @@ if __name__ == "__main__":
     print(f"Para testar o webhook, configure o Twilio para POST em http://localhost:{PORT}/webhook")
     
     app.run(host="0.0.0.0", port=PORT, debug=DEBUG)
+

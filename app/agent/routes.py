@@ -71,18 +71,33 @@ def logout():
 def dashboard():
     # Buscar conversas que estão aguardando agente ou atribuídas ao agente logado
     conversations_awaiting = database.get_conversations_by_status([database.STATUS_AWAITING_AGENT])
-    # Em um sistema mais complexo, você filtraria por agent_id aqui
-    conversations_active = database.get_conversations_by_status([database.STATUS_AGENT_ACTIVE]) 
+    conversations_active = database.get_conversations_by_status([database.STATUS_AGENT_ACTIVE])
+    
+    # ADICIONAR: Buscar conversas ativas do bot para monitoramento
+    conversations_bot_active = database.get_conversations_by_status([database.STATUS_BOT_ACTIVE])
+    
+    # ADICIONAR: Buscar todas as conversas recentes (últimas 50)
+    try:
+        from pymongo import DESCENDING
+        all_recent_conversations = list(database.conversations_collection.find().sort("updated_at", DESCENDING).limit(50))
+    except:
+        all_recent_conversations = []
     
     # Converter ObjectId para string para o template
     for conv in conversations_awaiting:
         conv["_id"] = str(conv["_id"])
     for conv in conversations_active:
         conv["_id"] = str(conv["_id"])
+    for conv in conversations_bot_active:
+        conv["_id"] = str(conv["_id"])
+    for conv in all_recent_conversations:
+        conv["_id"] = str(conv["_id"])
 
     return render_template("agent_dashboard.html", 
                            conversations_awaiting=conversations_awaiting,
-                           conversations_active=conversations_active)
+                           conversations_active=conversations_active,
+                           conversations_bot_active=conversations_bot_active,
+                           all_recent_conversations=all_recent_conversations)
 
 @agent_bp.route("/conversation/<conversation_id_str>")
 @login_required
@@ -156,3 +171,32 @@ def resolve_conversation(conversation_id_str):
     else:
         flash("Não foi possível resolver a conversa.", "danger")
     return redirect(url_for("agent_bp.dashboard"))
+
+# NOVA ROTA: Para assumir conversas do bot
+@agent_bp.route("/conversation/<conversation_id_str>/take_from_bot", methods=["POST"])
+@login_required
+def take_conversation_from_bot(conversation_id_str):
+    agent_id = session.get("agent_id")
+    agent_name = session.get("agent_name", "Atendente")
+    
+    # Mudar status de BOT_ACTIVE para AGENT_ACTIVE
+    success = database.set_conversation_status(conversation_id_str, database.STATUS_AGENT_ACTIVE, agent_id=agent_id)
+    if success:
+        flash(f"Conversa assumida por {agent_name}!", "success")
+        
+        # Opcional: Enviar mensagem automática informando que um agente assumiu
+        try:
+            conversation = database.get_conversation_by_id(conversation_id_str)
+            if conversation:
+                welcome_message = f"Olá! Sou {agent_name}, seu atendente humano. Vou continuar seu atendimento a partir de agora. Como posso ajudar?"
+                database.save_message(conversation["phone_number"], database.SENDER_AGENT, welcome_message, conversation_id=conversation_id_str)
+                
+                # Enviar via WhatsApp
+                from app.utils import twilio_utils
+                twilio_utils.send_whatsapp_message(conversation["phone_number"], welcome_message)
+        except Exception as e:
+            print(f"Erro ao enviar mensagem de boas-vindas: {e}")
+    else:
+        flash("Não foi possível assumir a conversa.", "danger")
+    
+    return redirect(url_for("agent_bp.view_conversation", conversation_id_str=conversation_id_str))

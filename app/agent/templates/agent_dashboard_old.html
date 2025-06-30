@@ -1,0 +1,113 @@
+{% extends "agent_base.html" %}
+
+{% block title %}Dashboard - Painel do Agente{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="bi bi-speedometer2"></i> Dashboard do Agente</h2>
+        <p class="text-muted">Bem-vindo(a), {{ session.get('agent_name', 'Agente') }}! Gerencie as conversas de WhatsApp aqui.</p>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0"><i class="bi bi-hourglass-split"></i> Aguardando Atendimento ({{ conversations_awaiting|length }})</h5>
+            </div>
+            <div class="card-body">
+                {% if conversations_awaiting %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Telefone</th>
+                                    <th>Última Atualização</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for conv in conversations_awaiting %}
+                                <tr>
+                                    <td>{{ conv.phone_number }}</td>
+                                    <td>{{ conv.updated_at.strftime('%d/%m/%Y %H:%M') if conv.updated_at else 'N/A' }}</td>
+                                    <td>
+                                        <a href="{{ url_for('agent_bp.view_conversation', conversation_id_str=conv._id) }}" class="btn btn-sm btn-primary">
+                                            <i class="bi bi-eye"></i> Ver / Assumir
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> Não há conversas aguardando atendimento no momento.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-chat-dots"></i> Minhas Conversas Ativas ({{ conversations_active|length }})</h5>
+            </div>
+            <div class="card-body">
+                {% if conversations_active %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Telefone</th>
+                                    <th>Última Atualização</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for conv in conversations_active %}
+                                <tr>
+                                    <td>{{ conv.phone_number }}</td>
+                                    <td>{{ conv.updated_at.strftime('%d/%m/%Y %H:%M') if conv.updated_at else 'N/A' }}</td>
+                                    <td>
+                                        <a href="{{ url_for('agent_bp.view_conversation', conversation_id_str=conv._id) }}" class="btn btn-sm btn-primary">
+                                            <i class="bi bi-chat"></i> Continuar
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> Você não tem conversas ativas no momento.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> Informações</h5>
+            </div>
+            <div class="card-body">
+                <h6>Como funciona o atendimento:</h6>
+                <ol>
+                    <li>Quando um usuário solicita falar com um atendente, a conversa aparece na seção "Aguardando Atendimento"</li>
+                    <li>Clique em "Ver / Assumir" para visualizar a conversa e assumir o atendimento</li>
+                    <li>Após assumir, você pode enviar mensagens para o usuário via WhatsApp</li>
+                    <li>Quando o atendimento for concluído, marque a conversa como resolvida</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

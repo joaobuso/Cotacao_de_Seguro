@@ -9,132 +9,30 @@ python-dotenv==1.0.0
 gtts==2.4.0
 requests==2.31.0
 gunicorn==21.2.0
-# Dependências do Bot de Cotação de Seguros - UltraMsg
-# Versão atualizada para usar UltraMsg no lugar do Twilio
-
-# === FRAMEWORK WEB ===
-flask==3.0.0
-gunicorn==21.2.0
-
-# === COMUNICAÇÃO WHATSAPP ===
-# Removido: twilio (substituído por UltraMsg via requests)
-requests==2.31.0
 urllib3==2.0.7
-
-# === INTELIGÊNCIA ARTIFICIAL ===
-openai==1.3.0
-
-# === BANCO DE DADOS ===
-pymongo==4.6.0
-
-# === AUTOMAÇÃO WEB ===
-selenium==4.15.0
-webdriver-manager==4.0.1
-
-# === PROCESSAMENTO DE ÁUDIO ===
-# Para transcrição de áudios recebidos
 SpeechRecognition==3.10.0
 pydub==0.25.1
-
-# === GERAÇÃO DE ÁUDIO ===
-# Para gerar respostas em áudio
-gtts==2.4.0
-
-# === PROCESSAMENTO DE DOCUMENTOS ===
-# Para manipular PDFs gerados
 PyPDF2==3.0.1
 reportlab==4.0.7
-
-# === UPLOAD DE ARQUIVOS ===
-# Para Cloudinary (upload de PDFs, imagens, áudios)
 cloudinary==1.36.0
-
-# === CONFIGURAÇÕES ===
-python-dotenv==1.0.0
-
-# === SEGURANÇA ===
-# Para autenticação do painel de agente
 werkzeug==3.0.1
 bcrypt==4.1.2
-
-# === UTILITÁRIOS ===
-# Para manipulação de datas e dados
 python-dateutil==2.8.2
 pytz==2023.3
-
-# === PROCESSAMENTO DE IMAGENS ===
-# Para manipular imagens se necessário
 Pillow==10.1.0
-
-# === VALIDAÇÃO DE DADOS ===
-# Para validar dados de entrada
 marshmallow==3.20.1
-
-# === LOGS E MONITORAMENTO ===
-# Para logs estruturados
 structlog==23.2.0
-
-# === CRIPTOGRAFIA ===
-# Para proteger dados sensíveis
 cryptography==41.0.8
-
-# === PROCESSAMENTO JSON ===
-# Para manipular dados JSON
 jsonschema==4.20.0
-
-# === CLIENTE HTTP AVANÇADO ===
-# Para requisições mais robustas
 httpx==0.25.2
-
-# === PROCESSAMENTO DE TEXTO ===
-# Para análise de texto das mensagens
 nltk==3.8.1
-
-# === CACHE ===
-# Para cache de respostas
 redis==5.0.1
-
-# === AGENDAMENTO DE TAREFAS ===
-# Para tarefas em background
 celery==5.3.4
-
-# === MONITORAMENTO ===
-# Para monitorar performance
 psutil==5.9.6
-
-# === DESENVOLVIMENTO ===
-# Apenas para desenvolvimento local
-# pytest==7.4.3
-# pytest-flask==1.3.0
-# black==23.11.0
-# flake8==6.1.0
-
-# === COMPATIBILIDADE ===
-# Para manter compatibilidade com Python 3.8+
 typing-extensions==4.8.0
-
-# === PROCESSAMENTO ASSÍNCRONO ===
-# Para operações assíncronas
 asyncio==3.4.3
-
-# === VALIDAÇÃO DE TELEFONE ===
-# Para validar números de telefone
 phonenumbers==8.13.26
-
-# === GERAÇÃO DE QR CODE ===
-# Para gerar QR codes se necessário
 qrcode==7.4.2
-
-# === MANIPULAÇÃO DE ARQUIVOS ===
-# Para trabalhar com diferentes formatos
 openpyxl==3.1.2
 python-magic==0.4.27
-
-# === TIMEZONE ===
-# Para trabalhar com fusos horários
-pytz==2023.3
-
-# === REGEX AVANÇADO ===
-# Para processamento de texto
 regex==2023.10.3
-

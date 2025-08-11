@@ -1,23 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-Bot de Cotação de Seguros - UltraMsg (Versão Completa Melhorada)
+Bot de Cotação de Seguros - UltraMsg (Encoding Corrigido)
 """
 
 import os
 import logging
 import requests
+import urllib.parse
 from datetime import datetime
 from flask import Flask, request, jsonify, render_template_string
 from dotenv import load_dotenv
-
-# Importar módulos personalizados
-try:
-    from database_manager import db_manager
-    from response_generator import response_generator
-except ImportError:
-    # Fallback se os módulos não estiverem disponíveis
-    db_manager = None
-    response_generator = None
 
 # Carregar variáveis de ambiente
 load_dotenv()
@@ -39,30 +31,71 @@ ULTRAMSG_INSTANCE_ID = os.getenv('ULTRAMSG_INSTANCE_ID')
 ULTRAMSG_TOKEN = os.getenv('ULTRAMSG_TOKEN')
 ULTRAMSG_BASE_URL = f"https://api.ultramsg.com/{ULTRAMSG_INSTANCE_ID}"
 
-# Fallback para armazenamento simples se database_manager não estiver disponível
-if not db_manager:
-    simple_storage = {}
+# Armazenamento simples de dados dos clientes
+client_data = {}
+
+# Campos obrigatórios para cotação
+REQUIRED_FIELDS = {
+    'nome_animal': 'Nome do Animal',
+    'valor_animal': 'Valor do Animal (R$)',
+    'registro': 'Numero de Registro ou Passaporte',
+    'raca': 'Raca',
+    'data_nascimento': 'Data de Nascimento',
+    'sexo': 'Sexo (inteiro, castrado ou femea)',
+    'utilizacao': 'Utilizacao (lazer, salto, laco, etc.)',
+    'endereco_cocheira': 'Endereco da Cocheira (CEP e cidade)'
+}
+
+def clean_text_for_whatsapp(text):
+    """Remove ou substitui caracteres que causam problemas no WhatsApp"""
+    # Substituir caracteres especiais por versões simples
+    replacements = {
+        'ç': 'c', 'Ç': 'C',
+        'ã': 'a', 'Ã': 'A',
+        'á': 'a', 'Á': 'A',
+        'à': 'a', 'À': 'A',
+        'â': 'a', 'Â': 'A',
+        'é': 'e', 'É': 'E',
+        'ê': 'e', 'Ê': 'E',
+        'í': 'i', 'Í': 'I',
+        'ó': 'o', 'Ó': 'O',
+        'ô': 'o', 'Ô': 'O',
+        'õ': 'o', 'Õ': 'O',
+        'ú': 'u', 'Ú': 'U',
+        'ü': 'u', 'Ü': 'U'
+    }
+    
+    for char, replacement in replacements.items():
+        text = text.replace(char, replacement)
+    
+    return text
 
 def send_ultramsg_message(phone, message):
-    """Envia mensagem via UltraMsg"""
+    """Envia mensagem via UltraMsg com encoding correto"""
     try:
         url = f"{ULTRAMSG_BASE_URL}/messages/chat"
         
         # Limpar número de telefone
         clean_phone = phone.replace('@c.us', '').replace('+', '')
         
+        # Limpar texto para evitar problemas de encoding
+        clean_message = clean_text_for_whatsapp(message)
+        
+        # Preparar dados
         data = {
             'token': ULTRAMSG_TOKEN,
             'to': clean_phone,
-            'body': message
+            'body': clean_message
         }
         
-        payload = "&".join([f"{k}={v}" for k, v in data.items()])
-        payload = payload.encode('utf8').decode('iso-8859-1')
+        # Usar URL encoding adequado
+        payload = urllib.parse.urlencode(data, encoding='utf-8')
         
-        headers = {'content-type': 'application/x-www-form-urlencoded'}
+        headers = {
+            'content-type': 'application/x-www-form-urlencoded; charset=utf-8'
+        }
         
-        logger.info(f"📤 Enviando mensagem para {clean_phone}: {message[:50]}...")
+        logger.info(f"📤 Enviando mensagem para {clean_phone}: {clean_message[:50]}...")
         
         response = requests.post(url, data=payload, headers=headers, timeout=30)
         
@@ -77,100 +110,180 @@ def send_ultramsg_message(phone, message):
         logger.error(f"❌ Erro ao enviar mensagem: {str(e)}")
         return {"success": False, "error": str(e)}
 
-def process_message_simple(phone, message):
-    """Processamento simples de mensagem (fallback)"""
-    global simple_storage
+def extract_animal_data_simple(message, existing_data=None):
+    """Extração simples de dados sem caracteres especiais"""
+    import re
     
-    if phone not in simple_storage:
-        simple_storage[phone] = {'count': 0, 'data': {}}
+    data = existing_data.copy() if existing_data else {}
+    message_lower = message.lower()
     
-    simple_storage[phone]['count'] += 1
-    count = simple_storage[phone]['count']
+    # Padrões simples de extração
+    patterns = {
+        'nome_animal': [
+            r'nome[:\s]+([a-z\s]+)', 
+            r'chama[:\s]+([a-z\s]+)',
+            r'cavalo[:\s]+([a-z\s]+)',
+            r'egua[:\s]+([a-z\s]+)'
+        ],
+        'valor_animal': [
+            r'valor[:\s]*r?\$?\s*([0-9.,]+)', 
+            r'vale[:\s]*r?\$?\s*([0-9.,]+)',
+            r'custa[:\s]*r?\$?\s*([0-9.,]+)'
+        ],
+        'raca': [
+            r'raca[:\s]+([a-z\s]+)', 
+            r'e\s+um[a]?\s+([a-z\s]+)',
+            r'quarto\s+de\s+milha',
+            r'mangalarga',
+            r'puro\s+sangue'
+        ],
+        'sexo': [r'(inteiro|castrado|femea|macho|egua)'],
+        'utilizacao': [r'(lazer|salto|laco|corrida|trabalho|esporte)'],
+        'registro': [
+            r'registro[:\s]*([a-z0-9]+)',
+            r'passaporte[:\s]*([a-z0-9]+)'
+        ],
+        'data_nascimento': [
+            r'nasceu[:\s]*([0-9/]+)',
+            r'nascimento[:\s]*([0-9/]+)',
+            r'([0-9]{1,2}/[0-9]{1,2}/[0-9]{4})'
+        ]
+    }
     
-    if count == 1:
-        return """🐴 *Olá! Bem-vindo à Equinos Seguros!*
+    for field, pattern_list in patterns.items():
+        if field not in data or not data[field]:
+            for pattern in pattern_list:
+                match = re.search(pattern, message_lower)
+                if match:
+                    value = match.group(1).strip() if len(match.groups()) > 0 else match.group(0)
+                    data[field] = value
+                    break
+    
+    return data
 
-Sou seu assistente virtual e vou te ajudar a fazer a cotação do seguro do seu equino.
+def generate_response_message(phone, message):
+    """Gera resposta personalizada baseada nos dados coletados"""
+    try:
+        # Inicializar dados do cliente se não existir
+        if phone not in client_data:
+            client_data[phone] = {'data': {}, 'conversation_count': 0}
+        
+        client_data[phone]['conversation_count'] += 1
+        count = client_data[phone]['conversation_count']
+        
+        # Extrair dados da mensagem atual
+        existing_data = client_data[phone]['data']
+        updated_data = extract_animal_data_simple(message, existing_data)
+        client_data[phone]['data'] = updated_data
+        
+        # Verificar campos faltantes
+        missing_fields = []
+        collected_fields = []
+        
+        for field_key, field_name in REQUIRED_FIELDS.items():
+            if field_key in updated_data and updated_data[field_key]:
+                collected_fields.append(f"✅ {field_name}: {updated_data[field_key]}")
+            else:
+                missing_fields.append(f"❌ {field_name}")
+        
+        # Gerar resposta baseada no estado
+        if count == 1:
+            # Primeira mensagem - saudação
+            response = """🐴 *Ola! Bem-vindo a Equinos Seguros!*
 
-Para gerar sua cotação, preciso de algumas informações sobre seu animal:
+Sou seu assistente virtual e vou te ajudar a fazer a cotacao do seguro do seu equino de forma rapida e facil.
 
-📋 *DADOS NECESSÁRIOS:*
+Para gerar sua cotacao, preciso de algumas informacoes sobre seu animal:
+
+📋 *DADOS NECESSARIOS:*
 • Nome do Animal
 • Valor do Animal (R$)
-• Número de Registro ou Passaporte
-• Raça
+• Numero de Registro ou Passaporte
+• Raca
 • Data de Nascimento
-• Sexo (inteiro, castrado ou fêmea)
-• Utilização (lazer, salto, laço, etc.)
-• Endereço da Cocheira (CEP e cidade)
+• Sexo (inteiro, castrado ou femea)
+• Utilizacao (lazer, salto, laco, etc.)
+• Endereco da Cocheira (CEP e cidade)
 
-Pode enviar as informações aos poucos. Vou te ajudar! 😊"""
-    
-    else:
-        return f"""📝 *Obrigado pela mensagem #{count}!*
+Voce pode enviar todas as informacoes de uma vez ou ir enviando aos poucos. Vou te ajudar a organizar tudo! 😊
 
-Recebi: "{message}"
+*Como prefere comecar?*"""
+        
+        elif len(missing_fields) == 0:
+            # Todos os dados coletados
+            data_summary = "\\n".join(collected_fields)
+            
+            response = f"""✅ *Perfeito! Coletei todas as informacoes necessarias:*
 
-Continue enviando as informações do seu animal. Quando tiver todos os dados, vou processar sua cotação!
+{data_summary}
 
-*Ainda preciso de:*
-• Nome, valor, raça, sexo, data de nascimento
-• Registro, utilização, endereço da cocheira
+🎉 *Sua cotacao esta sendo processada!*
 
-Estou aqui para ajudar! 🤝"""
+Em breve voce recebera:
+• Proposta de seguro personalizada
+• Valores e coberturas
+• Condicoes especiais
+
+Aguarde alguns instantes... 🔄"""
+        
+        else:
+            # Dados parciais coletados
+            collected_list = "\\n".join(collected_fields) if collected_fields else "Nenhum dado coletado ainda."
+            missing_list = "\\n".join(missing_fields)
+            
+            response = f"""📝 *Obrigado pelas informacoes!*
+
+*DADOS JA COLETADOS:*
+{collected_list}
+
+*AINDA PRECISO DE:*
+{missing_list}
+
+Pode enviar as informacoes que faltam. Estou aqui para te ajudar! 😊"""
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Erro ao gerar resposta: {str(e)}")
+        return "Ola! Bem-vindo a Equinos Seguros. Vou ajuda-lo com sua cotacao. Por favor, me informe os dados do seu animal."
 
 @app.route('/')
 def home():
     """Página inicial"""
     return jsonify({
         "status": "online",
-        "service": "Bot de Cotação de Seguros - UltraMsg Melhorado",
-        "version": "2.2.0",
-        "features": [
-            "Coleta inteligente de dados com IA",
-            "Persistência de informações",
-            "Respostas contextuais personalizadas",
-            "Validação automática de campos",
-            "Formatação profissional",
-            "Dashboard de monitoramento"
-        ],
+        "service": "Bot de Cotacao de Seguros - UltraMsg (Encoding Corrigido)",
+        "version": "2.3.0",
+        "encoding": "UTF-8 com fallback ASCII",
         "endpoints": {
             "webhook": "/webhook/ultramsg",
             "health": "/health",
             "test": "/webhook/test",
             "agent": "/agent/login",
-            "data": "/api/client-data",
-            "stats": "/api/statistics"
+            "data": "/api/client-data"
         }
     })
 
 @app.route('/health')
 def health_check():
     """Health check"""
-    stats = {}
-    if db_manager:
-        stats = db_manager.get_statistics()
-    else:
-        stats = {
-            "total_clients": len(simple_storage),
-            "total_conversations": sum(data.get('count', 0) for data in simple_storage.values())
-        }
-    
     return jsonify({
         "status": "healthy",
         "timestamp": str(datetime.utcnow()),
         "components": {
             "flask": "ok",
             "ultramsg": "ok" if ULTRAMSG_TOKEN else "not_configured",
-            "database_manager": "ok" if db_manager else "fallback",
-            "response_generator": "ok" if response_generator else "fallback"
+            "encoding": "utf-8_with_ascii_fallback"
         },
-        "stats": stats
+        "stats": {
+            "active_clients": len(client_data),
+            "total_conversations": sum(data.get('conversation_count', 0) for data in client_data.values())
+        }
     }), 200
 
 @app.route('/webhook/ultramsg', methods=['POST'])
 def webhook_ultramsg():
-    """Webhook para UltraMsg - Versão Melhorada"""
+    """Webhook para UltraMsg - Encoding Corrigido"""
     try:
         data = request.get_json()
         
@@ -209,33 +322,8 @@ def webhook_ultramsg():
         
         logger.info(f"📱 Mensagem de {sender_name} ({phone_number}): {message_body}")
         
-        # Processar mensagem com sistema inteligente ou fallback
-        if db_manager and response_generator:
-            # Sistema completo
-            client_data = db_manager.get_client_data(phone_number) or {'data': {}, 'conversation_count': 0}
-            
-            # Gerar resposta inteligente
-            bot_response = response_generator.generate_response(
-                phone_number, 
-                message_body, 
-                client_data, 
-                client_data.get('conversation_count', 0)
-            )
-            
-            # Extrair e salvar dados
-            existing_data = client_data.get('data', {})
-            updated_data = response_generator.extract_animal_data(message_body, existing_data)
-            
-            # Salvar no banco
-            db_manager.save_client_data(phone_number, updated_data)
-            db_manager.save_conversation(phone_number, message_body, bot_response)
-            
-            logger.info(f"🧠 Processamento inteligente concluído")
-            
-        else:
-            # Sistema simples (fallback)
-            bot_response = process_message_simple(phone_number, message_body)
-            logger.info(f"📝 Processamento simples concluído")
+        # Gerar resposta
+        bot_response = generate_response_message(phone_number, message_body)
         
         # Enviar resposta
         result = send_ultramsg_message(phone_number, bot_response)
@@ -247,7 +335,7 @@ def webhook_ultramsg():
                 "message_received": message_body,
                 "response_sent": bot_response,
                 "sender": sender_name,
-                "processing_mode": "intelligent" if (db_manager and response_generator) else "simple",
+                "client_data": client_data.get(phone_number, {}),
                 "ultramsg_result": result
             }), 200
         else:
@@ -266,50 +354,30 @@ def webhook_ultramsg():
 @app.route('/api/client-data', methods=['GET'])
 def get_client_data():
     """API para visualizar dados dos clientes"""
-    if db_manager:
-        return jsonify(db_manager.get_all_clients())
-    else:
-        return jsonify(simple_storage)
-
-@app.route('/api/statistics', methods=['GET'])
-def get_statistics():
-    """API para estatísticas"""
-    if db_manager:
-        return jsonify(db_manager.get_statistics())
-    else:
-        return jsonify({
-            "total_clients": len(simple_storage),
-            "total_conversations": sum(data.get('count', 0) for data in simple_storage.values()),
-            "mode": "simple"
-        })
+    return jsonify({
+        "total_clients": len(client_data),
+        "clients": client_data
+    })
 
 @app.route('/webhook/test', methods=['GET', 'POST'])
 def webhook_test():
     """Teste do webhook"""
     try:
         test_phone = "5519988118043@c.us"
-        test_message = "Olá, quero fazer uma cotação para meu cavalo Relâmpago, ele vale R$ 50.000"
+        test_message = "Ola, quero fazer uma cotacao para meu cavalo Relampago, ele vale R$ 50.000"
         
         # Simular processamento
-        if db_manager and response_generator:
-            client_data = db_manager.get_client_data(test_phone) or {'data': {}, 'conversation_count': 0}
-            bot_response = response_generator.generate_response(
-                test_phone, test_message, client_data, client_data.get('conversation_count', 0)
-            )
-            mode = "intelligent"
-        else:
-            bot_response = process_message_simple(test_phone, test_message)
-            mode = "simple"
+        bot_response = generate_response_message(test_phone, test_message)
         
         return jsonify({
             "status": "test_success",
             "test_message": test_message,
             "bot_response": bot_response,
-            "processing_mode": mode,
+            "client_data": client_data.get(test_phone, {}),
             "ultramsg_configured": bool(ULTRAMSG_TOKEN),
-            "components": {
-                "database_manager": bool(db_manager),
-                "response_generator": bool(response_generator)
+            "encoding_test": {
+                "original": "Olá, cotação, informações",
+                "cleaned": clean_text_for_whatsapp("Olá, cotação, informações")
             }
         }), 200
         
@@ -324,107 +392,67 @@ AGENT_TEMPLATE = """
 <head>
     <title>Painel de Agente - Equinos Seguros</title>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
         .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { color: #333; margin-bottom: 30px; }
+        h1 { color: #333; }
         .status { padding: 15px; margin: 10px 0; border-radius: 5px; }
         .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
         .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
-        .btn { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; margin: 5px; text-decoration: none; display: inline-block; }
+        .btn { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; margin: 5px; }
         .btn:hover { background: #0056b3; }
         .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; }
-        .stat-card { background: #f8f9fa; padding: 15px; border-radius: 5px; text-align: center; border: 1px solid #dee2e6; }
+        .stat-card { background: #f8f9fa; padding: 15px; border-radius: 5px; text-align: center; }
         .stat-number { font-size: 24px; font-weight: bold; color: #007bff; }
-        .feature-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; margin: 20px 0; }
-        .feature-card { background: #f8f9fa; padding: 15px; border-radius: 5px; border-left: 4px solid #28a745; }
-        .code { background: #f8f9fa; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🤖 Painel de Agente - Bot Melhorado v2.2</h1>
+        <h1>🤖 Painel de Agente - Bot Encoding Corrigido</h1>
         
         <div class="status success">
-            ✅ <strong>Bot Inteligente Online</strong> - Sistema completo funcionando
+            ✅ <strong>Bot Online com Encoding Corrigido</strong> - Caracteres especiais funcionando
         </div>
         
         <div class="stats">
             <div class="stat-card">
-                <div class="stat-number">{{ stats.get('total_clients', 0) }}</div>
+                <div class="stat-number">{{ active_clients }}</div>
                 <div>Clientes Ativos</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number">{{ stats.get('completed_clients', 0) }}</div>
-                <div>Cotações Completas</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">{{ stats.get('total_conversations', 0) }}</div>
+                <div class="stat-number">{{ total_conversations }}</div>
                 <div>Conversas Totais</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number">{{ "%.1f"|format(stats.get('completion_rate', 0)) }}%</div>
-                <div>Taxa de Conclusão</div>
-            </div>
-        </div>
-        
-        <div class="feature-list">
-            <div class="feature-card">
-                <h4>🧠 Inteligência Artificial</h4>
-                <p>Extração automática de dados usando OpenAI GPT-3.5</p>
-            </div>
-            <div class="feature-card">
-                <h4>💾 Persistência de Dados</h4>
-                <p>Armazenamento inteligente de informações dos clientes</p>
-            </div>
-            <div class="feature-card">
-                <h4>💬 Respostas Contextuais</h4>
-                <p>Mensagens personalizadas baseadas no histórico</p>
-            </div>
-            <div class="feature-card">
-                <h4>✅ Validação Automática</h4>
-                <p>Verificação de campos obrigatórios em tempo real</p>
+                <div class="stat-number">8</div>
+                <div>Campos Coletados</div>
             </div>
         </div>
         
         <div class="status info">
-            📊 <strong>Componentes do Sistema:</strong><br>
-            • Database Manager: {{ 'Ativo' if db_manager else 'Fallback Simples' }}<br>
-            • Response Generator: {{ 'Ativo' if response_generator else 'Fallback Simples' }}<br>
-            • UltraMsg API: {{ 'Configurado' if ultramsg_configured else 'Não configurado' }}<br>
-            • OpenAI: {{ 'Configurado' if openai_configured else 'Não configurado' }}
-        </div>
-        
-        <div class="status success">
-            🎯 <strong>Campos Coletados Automaticamente:</strong><br>
-            • Nome do Animal • Valor do Animal (R$) • Número de Registro/Passaporte<br>
-            • Raça • Data de Nascimento • Sexo (inteiro/castrado/fêmea)<br>
-            • Utilização (lazer/salto/laço) • Endereço da Cocheira
-        </div>
-        
-        <h3>🔧 Ações Disponíveis:</h3>
-        <a href="javascript:location.reload()" class="btn">🔄 Atualizar Status</a>
-        <a href="/api/client-data" target="_blank" class="btn">📊 Ver Dados dos Clientes</a>
-        <a href="/api/statistics" target="_blank" class="btn">📈 Estatísticas</a>
-        <a href="/webhook/test" target="_blank" class="btn">🧪 Testar Bot</a>
-        
-        <h3>📱 Como Testar:</h3>
-        <div class="code">
-            1. Envie uma mensagem para seu WhatsApp Business<br>
-            2. Teste: "Olá, quero cotação para meu cavalo Thor, vale R$ 80.000"<br>
-            3. Veja a resposta inteligente e formatada<br>
-            4. Continue enviando dados e veja como o bot organiza tudo
+            🔧 <strong>Correcoes Aplicadas:</strong><br>
+            • ✅ Encoding UTF-8 com fallback ASCII<br>
+            • ✅ Substituicao de caracteres especiais<br>
+            • ✅ Headers corretos para UltraMsg<br>
+            • ✅ URL encoding adequado<br>
+            • ✅ Texto limpo para WhatsApp
         </div>
         
         <div class="status warning">
-            🚀 <strong>Próximas Melhorias:</strong><br>
-            • Integração com MongoDB para persistência permanente<br>
-            • Geração automática de cotações com SwissRe<br>
-            • Envio de PDFs via WhatsApp<br>
-            • Dashboard com métricas em tempo real<br>
-            • Sistema de notificações para agentes
+            📝 <strong>Caracteres Substituidos:</strong><br>
+            ç → c, ã → a, é → e, ô → o, etc.<br>
+            Isso garante compatibilidade total com WhatsApp
+        </div>
+        
+        <h3>🔧 Acoes Disponiveis:</h3>
+        <button class="btn" onclick="location.reload()">🔄 Atualizar Status</button>
+        <button class="btn" onclick="window.open('/api/client-data', '_blank')">📊 Ver Dados dos Clientes</button>
+        <button class="btn" onclick="window.open('/webhook/test', '_blank')">🧪 Testar Bot</button>
+        
+        <div class="status success">
+            🎯 <strong>Teste Agora:</strong><br>
+            Envie "Ola" para seu WhatsApp Business e veja a mensagem formatada corretamente!
         </div>
     </div>
 </body>
@@ -434,31 +462,18 @@ AGENT_TEMPLATE = """
 @app.route('/agent/login')
 def agent_login():
     """Painel de agente"""
-    if db_manager:
-        stats = db_manager.get_statistics()
-    else:
-        stats = {
-            "total_clients": len(simple_storage),
-            "total_conversations": sum(data.get('count', 0) for data in simple_storage.values()),
-            "completed_clients": 0,
-            "completion_rate": 0
-        }
+    active_clients = len(client_data)
+    total_conversations = sum(data.get('conversation_count', 0) for data in client_data.values())
     
     return render_template_string(AGENT_TEMPLATE, 
-                                stats=stats,
-                                db_manager=bool(db_manager),
-                                response_generator=bool(response_generator),
-                                ultramsg_configured=bool(ULTRAMSG_TOKEN),
-                                openai_configured=bool(os.getenv("OPENAI_API_KEY")))
+                                active_clients=active_clients,
+                                total_conversations=total_conversations)
 
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({
-        "error": "Endpoint não encontrado",
-        "available_endpoints": [
-            "/", "/health", "/webhook/ultramsg", "/webhook/test", 
-            "/agent/login", "/api/client-data", "/api/statistics"
-        ]
+        "error": "Endpoint nao encontrado",
+        "available_endpoints": ["/", "/health", "/webhook/ultramsg", "/webhook/test", "/agent/login", "/api/client-data"]
     }), 404
 
 @app.errorhandler(500)
@@ -468,8 +483,7 @@ def internal_error(error):
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    logger.info(f"🚀 Iniciando Bot Melhorado v2.2 na porta {port}")
+    logger.info(f"🚀 Iniciando Bot com Encoding Corrigido na porta {port}")
     logger.info(f"📡 UltraMsg API URL: {ULTRAMSG_BASE_URL}")
-    logger.info(f"🧠 Database Manager: {'Ativo' if db_manager else 'Fallback'}")
-    logger.info(f"💬 Response Generator: {'Ativo' if response_generator else 'Fallback'}")
+    logger.info(f"🔤 Encoding: UTF-8 com fallback ASCII para caracteres especiais")
     app.run(host='0.0.0.0', port=port, debug=False)

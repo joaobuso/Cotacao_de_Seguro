@@ -64,7 +64,7 @@ structlog==23.2.0
 
 # === CRIPTOGRAFIA ===
 # Para proteger dados sensíveis
-cryptography==41.0.8
+cryptography==41.0.0
 
 # === PROCESSAMENTO JSON ===
 # Para manipular dados JSON

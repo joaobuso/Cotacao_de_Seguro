@@ -72,7 +72,7 @@ def generate_bot_response(message):
     """Gera resposta do bot usando OpenAI"""
     try:
         if not openai.api_key:
-            return "Olá! Bem-vindo à Equinos Seguros. Como posso ajudá-lo com sua cotação de seguro?"
+            return "Olá! Bem-vindo à Equinos Seguros. Posso ajudá-lo com sua cotação de seguro ?"
         
         response = openai.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -92,6 +92,8 @@ def generate_bot_response(message):
                     - Endereço da Cocheira (CEP e cidade)
                     
                     Seja educado, profissional e objetivo. Responda em português do Brasil.
+                    Faça a saudação na mensagem e envie a lista de informações acima que a pessoa precisa preencher.
+                    Caso seja enviado as informações incompleta, retorne a mensagem para a pessoa com o conteúdo ja enviado para faciliar o preenchimento apenas dos dados que faltam.
                     Mantenha as respostas curtas e diretas."""
                 },
                 {"role": "user", "content": message}

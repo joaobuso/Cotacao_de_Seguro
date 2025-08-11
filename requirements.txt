@@ -1,49 +1,13 @@
-# Dependências do Bot de Cotação de Seguros - UltraMsg
-# Versão simplificada para evitar problemas de build
+# Dependências mínimas para o Bot UltraMsg
+# Versão ultra-simplificada para resolver problemas de deploy
 
-# === FRAMEWORK WEB (ESSENCIAL) ===
 flask==3.0.0
 gunicorn==21.2.0
-
-# === COMUNICAÇÃO WHATSAPP (ESSENCIAL) ===
 requests==2.31.0
-
-# === INTELIGÊNCIA ARTIFICIAL (ESSENCIAL) ===
 openai==1.3.0
-
-# === BANCO DE DADOS (ESSENCIAL) ===
-pymongo==4.6.0
-
-# === CONFIGURAÇÕES (ESSENCIAL) ===
 python-dotenv==1.0.0
-
-# === SEGURANÇA (ESSENCIAL) ===
-werkzeug==3.0.1
-
-# === UTILITÁRIOS (ESSENCIAL) ===
-python-dateutil==2.8.2
-
-# === UPLOAD DE ARQUIVOS (OPCIONAL) ===
-# Cloudinary para upload de PDFs
+pymongo==4.6.0
 cloudinary==1.36.0
-
-# === PROCESSAMENTO DE ÁUDIO (OPCIONAL) ===
-# Para geração de áudio das respostas
+python-dateutil==2.8.2
 gtts==2.4.0
-
-# === AUTOMAÇÃO WEB (OPCIONAL) ===
-# Para automação SwissRe - descomente se necessário
-# selenium==4.15.0
-# webdriver-manager==4.0.1
-
-# === PROCESSAMENTO DE DOCUMENTOS (OPCIONAL) ===
-# Para geração de PDFs - descomente se necessário
-# reportlab==4.0.7
-
-# === VALIDAÇÃO DE TELEFONE (OPCIONAL) ===
 phonenumbers==8.13.26
-
-# === PROCESSAMENTO DE IMAGENS (OPCIONAL) ===
-# Descomente apenas se necessário
-# Pillow==10.4.0
-

@@ -1,23 +1,31 @@
 # -*- coding: utf-8 -*-
 """
-WSGI entry point para o Bot de Cotação de Seguros - UltraMsg
-Arquivo para deployment no Render, Railway, Heroku, etc.
+WSGI Entry Point Simplificado - Bot UltraMsg
 """
 
 import os
 import sys
+import logging
 
-# Adicionar o diretório atual ao path
-sys.path.insert(0, os.path.dirname(__file__))
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Importar a aplicação
-from app import app
+try:
+    # Importar a aplicação diretamente
+    from main_simples import app
+    
+    logger.info("✅ Aplicação importada com sucesso")
+    
+except ImportError as e:
+    logger.error(f"❌ Erro de importação: {e}")
+    raise
 
-# Criar diretórios necessários
-os.makedirs('static_bot_audio', exist_ok=True)
-os.makedirs('static_files', exist_ok=True)
+except Exception as e:
+    logger.error(f"❌ Erro geral: {e}")
+    raise
 
+# Para debug local
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
-

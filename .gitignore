@@ -1,10 +1,13 @@
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+
+# C extensions
 *.so
+
+# Distribution / packaging
 .Python
-env/
 build/
 develop-eggs/
 dist/
@@ -16,39 +19,139 @@ lib64/
 parts/
 sdist/
 var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
-# Ambientes virtuais
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
 venv/
 ENV/
-env/
+env.bak/
+venv.bak/
 
-# Arquivos de ambiente e credenciais
-.env
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Arquivos específicos do projeto
+static_bot_audio/*.mp3
+static_bot_audio/*.wav
+static_files/*.pdf
+static_files/*.jpg
+static_files/*.png
+*.log
+
+# Arquivos de configuração local
 .env.local
 .env.development
 .env.production
 
-# Arquivos de áudio gerados pelo bot
-app/static_bot_audio/*
-!app/static_bot_audio/.gitkeep
+# Arquivos temporários
+temp/
+tmp/
+*.tmp
 
-# Logs
-logs/
-*.log
-
-# Arquivos de sistema
+# Arquivos do sistema
 .DS_Store
 Thumbs.db
 
-# Arquivos de IDE
-.idea/
+# IDEs
 .vscode/
+.idea/
 *.swp
 *.swo
 
-# Arquivos temporários
-*.tmp
-*.bak
+# Selenium
+chromedriver
+geckodriver
+*.exe
+

@@ -1,43 +1,56 @@
 # -*- coding: utf-8 -*-
 """
-Gerenciador de arquivos WhatsApp para UltraMsg
-Substitui funcionalidades do Twilio para envio de arquivos
+Gerenciador de arquivos para upload e envio via WhatsApp
 """
 
 import os
 import logging
-import requests
-import cloudinary
-import cloudinary.uploader
+import shutil
 from typing import Optional, Dict, Any
-from ultramsg_integration import ultramsg_api
+from app.integrations.ultramsg_api import ultramsg_api
 
-# Configurar logging
 logger = logging.getLogger(__name__)
 
-# Configurar Cloudinary (se disponível)
-try:
-    cloudinary.config(
-        cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
-        api_key=os.getenv("CLOUDINARY_API_KEY"),
-        api_secret=os.getenv("CLOUDINARY_API_SECRET")
-    )
-    CLOUDINARY_AVAILABLE = True
-except:
-    CLOUDINARY_AVAILABLE = False
-    logger.warning("Cloudinary não configurado - usando URLs locais")
-
-class WhatsAppFileManager:
+class FileManager:
     """
-    Gerenciador de arquivos para WhatsApp via UltraMsg
+    Classe para gerenciar upload e envio de arquivos
     """
     
     def __init__(self):
-        self.base_url = os.getenv("BASE_URL", "http://localhost:8080")
-        self.static_files_dir = os.path.join(os.path.dirname(__file__), "static_files")
+        self.base_url = os.getenv('BASE_URL', 'http://localhost:8080')
+        self.static_files_dir = os.path.join(os.getcwd(), 'static_files')
+        self.cloudinary_enabled = self._check_cloudinary()
         
         # Criar diretório se não existir
         os.makedirs(self.static_files_dir, exist_ok=True)
+    
+    def _check_cloudinary(self) -> bool:
+        """
+        Verifica se Cloudinary está configurado
+        """
+        try:
+            import cloudinary
+            import cloudinary.uploader
+            
+            cloud_name = os.getenv('CLOUDINARY_CLOUD_NAME')
+            api_key = os.getenv('CLOUDINARY_API_KEY')
+            api_secret = os.getenv('CLOUDINARY_API_SECRET')
+            
+            if cloud_name and api_key and api_secret:
+                cloudinary.config(
+                    cloud_name=cloud_name,
+                    api_key=api_key,
+                    api_secret=api_secret
+                )
+                logger.info("✅ Cloudinary configurado")
+                return True
+            else:
+                logger.info("📁 Cloudinary não configurado - usando URLs locais")
+                return False
+                
+        except ImportError:
+            logger.info("📁 Cloudinary não instalado - usando URLs locais")
+            return False
     
     def upload_file_to_public_url(self, file_path: str) -> Optional[str]:
         """
@@ -50,7 +63,7 @@ class WhatsAppFileManager:
             URL pública do arquivo ou None se falhar
         """
         try:
-            if CLOUDINARY_AVAILABLE:
+            if self.cloudinary_enabled:
                 return self._upload_to_cloudinary(file_path)
             else:
                 return self._copy_to_static_files(file_path)
@@ -64,6 +77,8 @@ class WhatsAppFileManager:
         Faz upload para Cloudinary
         """
         try:
+            import cloudinary.uploader
+            
             # Determinar tipo de recurso
             file_ext = os.path.splitext(file_path)[1].lower()
             
@@ -80,7 +95,9 @@ class WhatsAppFileManager:
             result = cloudinary.uploader.upload(
                 file_path,
                 resource_type=resource_type,
-                folder="whatsapp_files"
+                folder="whatsapp_files",
+                use_filename=True,
+                unique_filename=True
             )
             
             logger.info(f"Arquivo enviado para Cloudinary: {result['secure_url']}")
@@ -95,8 +112,6 @@ class WhatsAppFileManager:
         Copia arquivo para diretório static_files local
         """
         try:
-            import shutil
-            
             filename = os.path.basename(file_path)
             destination = os.path.join(self.static_files_dir, filename)
             
@@ -113,7 +128,8 @@ class WhatsAppFileManager:
             logger.error(f"Erro ao copiar arquivo: {str(e)}")
             return None
     
-    def send_pdf_to_whatsapp(self, phone_number: str, pdf_path: str, dados_animal: Dict[str, Any] = None) -> bool:
+    def send_pdf_to_whatsapp(self, phone_number: str, pdf_path: str, 
+                            dados_animal: Dict[str, Any] = None) -> bool:
         """
         Envia PDF via WhatsApp usando UltraMsg
         
@@ -242,78 +258,85 @@ Se desejar contratar o seguro ou tiver alguma dúvida, nosso agente entrará em 
             logger.error(f"Erro ao enviar áudio para WhatsApp: {str(e)}")
             return False
     
-    def send_document_to_whatsapp(self, phone_number: str, document_path: str, 
-                                 filename: str = None, caption: str = "") -> bool:
+    def cleanup_old_files(self, max_age_hours: int = 24):
         """
-        Envia documento genérico via WhatsApp usando UltraMsg
+        Remove arquivos antigos do diretório static_files
         
         Args:
-            phone_number: Número do telefone
-            document_path: Caminho do documento
-            filename: Nome do arquivo (opcional)
-            caption: Legenda do documento
-            
-        Returns:
-            True se enviado com sucesso, False caso contrário
+            max_age_hours: Idade máxima em horas
         """
         try:
-            # Fazer upload do documento para URL pública
-            document_url = self.upload_file_to_public_url(document_path)
+            import time
             
-            if not document_url:
-                logger.error("Não foi possível obter URL pública para o documento")
-                return False
+            if not os.path.exists(self.static_files_dir):
+                return
             
-            # Usar nome do arquivo original se não fornecido
-            if not filename:
-                filename = os.path.basename(document_path)
+            current_time = time.time()
+            max_age_seconds = max_age_hours * 3600
             
-            # Enviar documento via UltraMsg
-            result = ultramsg_api.send_document(phone_number, document_url, filename, caption)
+            removed_count = 0
+            for filename in os.listdir(self.static_files_dir):
+                file_path = os.path.join(self.static_files_dir, filename)
+                
+                if os.path.isfile(file_path):
+                    file_age = current_time - os.path.getmtime(file_path)
+                    
+                    if file_age > max_age_seconds:
+                        os.unlink(file_path)
+                        removed_count += 1
             
-            if result.get("success"):
-                logger.info(f"Documento enviado com sucesso para {phone_number}")
-                return True
-            else:
-                logger.error(f"Erro ao enviar documento via UltraMsg: {result.get('error')}")
-                return False
+            if removed_count > 0:
+                logger.info(f"Removidos {removed_count} arquivos antigos")
                 
         except Exception as e:
-            logger.error(f"Erro ao enviar documento para WhatsApp: {str(e)}")
-            return False
-
-# Instância global
-file_manager = WhatsAppFileManager()
-
-# Funções de compatibilidade com código existente
-def send_pdf_to_whatsapp(phone_number: str, pdf_path: str, dados_animal: Dict[str, Any] = None) -> bool:
-    """
-    Função de compatibilidade para envio de PDF
-    """
-    return file_manager.send_pdf_to_whatsapp(phone_number, pdf_path, dados_animal)
-
-def upload_file_to_public_url(file_path: str) -> Optional[str]:
-    """
-    Função de compatibilidade para upload de arquivo
-    """
-    return file_manager.upload_file_to_public_url(file_path)
-
-def send_image_to_whatsapp(phone_number: str, image_path: str, caption: str = "") -> bool:
-    """
-    Função de compatibilidade para envio de imagem
-    """
-    return file_manager.send_image_to_whatsapp(phone_number, image_path, caption)
-
-def send_audio_to_whatsapp(phone_number: str, audio_path: str) -> bool:
-    """
-    Função de compatibilidade para envio de áudio
-    """
-    return file_manager.send_audio_to_whatsapp(phone_number, audio_path)
-
-def send_document_to_whatsapp(phone_number: str, document_path: str, 
-                             filename: str = None, caption: str = "") -> bool:
-    """
-    Função de compatibilidade para envio de documento
-    """
-    return file_manager.send_document_to_whatsapp(phone_number, document_path, filename, caption)
+            logger.error(f"Erro ao limpar arquivos: {str(e)}")
+    
+    def get_file_url(self, filename: str) -> str:
+        """
+        Retorna URL pública do arquivo
+        
+        Args:
+            filename: Nome do arquivo
+            
+        Returns:
+            URL pública do arquivo
+        """
+        return f"{self.base_url}/static_files/{filename}"
+    
+    def get_file_size(self, file_path: str) -> Optional[int]:
+        """
+        Retorna tamanho do arquivo em bytes
+        
+        Args:
+            file_path: Caminho do arquivo
+            
+        Returns:
+            Tamanho em bytes ou None se erro
+        """
+        try:
+            return os.path.getsize(file_path)
+        except:
+            return None
+    
+    def is_file_type_supported(self, file_path: str, file_type: str) -> bool:
+        """
+        Verifica se tipo de arquivo é suportado
+        
+        Args:
+            file_path: Caminho do arquivo
+            file_type: Tipo esperado (image, audio, document)
+            
+        Returns:
+            True se suportado
+        """
+        file_ext = os.path.splitext(file_path)[1].lower()
+        
+        supported_types = {
+            'image': ['.jpg', '.jpeg', '.png', '.gif'],
+            'audio': ['.mp3', '.wav', '.ogg', '.m4a'],
+            'document': ['.pdf', '.doc', '.docx', '.txt'],
+            'video': ['.mp4', '.avi', '.mov']
+        }
+        
+        return file_ext in supported_types.get(file_type, [])
 

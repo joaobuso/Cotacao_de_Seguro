@@ -1,14 +1,9 @@
-from flask import Flask
+# -*- coding: utf-8 -*-
+"""
+Módulo principal da aplicação Bot de Cotação de Seguros
+"""
 
-def create_app():
-    app = Flask(__name__, static_folder="static_bot_audio")
-    
-    # Registrar blueprints
-    from app.agent.routes import agent_bp
-    app.register_blueprint(agent_bp)
-    
-    # Importar rotas principais
-    from app.main import configure_routes
-    configure_routes(app)
-    
-    return app
+__version__ = "2.0.0"
+__author__ = "Equinos Seguros"
+__description__ = "Bot de Cotação de Seguros para Equinos via UltraMsg"
+

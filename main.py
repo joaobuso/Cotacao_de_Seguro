@@ -32,8 +32,7 @@ app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key')
 # Configurações UltraMsg
 ULTRAMSG_INSTANCE_ID = os.getenv('ULTRAMSG_INSTANCE_ID')
 ULTRAMSG_TOKEN = os.getenv('ULTRAMSG_TOKEN')
-ULTRAMSG_BASE_URL = os.getenv('BASE_URL')
-ULTRAMSG_BASE_URL = f"{ULTRAMSG_BASE_URL}/{ULTRAMSG_INSTANCE_ID}"
+ULTRAMSG_BASE_URL = f"https://api.ultramsg.com/{ULTRAMSG_INSTANCE_ID}"
 
 def send_ultramsg_message(phone, message):
     """Envia mensagem via UltraMsg"""

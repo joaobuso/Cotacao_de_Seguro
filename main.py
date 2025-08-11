@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Bot de Cotação de Seguros - UltraMsg (Versão Simplificada)
+Bot de Cotação de Seguros - UltraMsg (Versão Corrigida)
 """
 
 import os
@@ -39,9 +39,12 @@ def send_ultramsg_message(phone, message):
     try:
         url = f"{ULTRAMSG_BASE_URL}/messages/chat"
         
+        # Limpar número de telefone
+        clean_phone = phone.replace('@c.us', '').replace('+', '')
+        
         data = {
             'token': ULTRAMSG_TOKEN,
-            'to': phone,
+            'to': clean_phone,
             'body': message
         }
         
@@ -50,17 +53,19 @@ def send_ultramsg_message(phone, message):
         
         headers = {'content-type': 'application/x-www-form-urlencoded'}
         
+        logger.info(f"Enviando mensagem para {clean_phone}: {message[:50]}...")
+        
         response = requests.post(url, data=payload, headers=headers, timeout=30)
         
         if response.status_code == 200:
-            logger.info(f"Mensagem enviada para {phone}")
+            logger.info(f"✅ Mensagem enviada com sucesso para {clean_phone}")
             return {"success": True, "data": response.json()}
         else:
-            logger.error(f"Erro ao enviar mensagem: {response.status_code}")
+            logger.error(f"❌ Erro ao enviar mensagem: {response.status_code} - {response.text}")
             return {"success": False, "error": f"HTTP {response.status_code}"}
             
     except Exception as e:
-        logger.error(f"Erro ao enviar mensagem: {str(e)}")
+        logger.error(f"❌ Erro ao enviar mensagem: {str(e)}")
         return {"success": False, "error": str(e)}
 
 def generate_bot_response(message):
@@ -86,7 +91,8 @@ def generate_bot_response(message):
                     - Utilização (lazer, salto, laço etc.)
                     - Endereço da Cocheira (CEP e cidade)
                     
-                    Seja educado, profissional e objetivo. Responda em português do Brasil."""
+                    Seja educado, profissional e objetivo. Responda em português do Brasil.
+                    Mantenha as respostas curtas e diretas."""
                 },
                 {"role": "user", "content": message}
             ],
@@ -106,7 +112,7 @@ def home():
     return jsonify({
         "status": "online",
         "service": "Bot de Cotação de Seguros - UltraMsg",
-        "version": "2.0.0",
+        "version": "2.0.1",
         "endpoints": {
             "webhook": "/webhook/ultramsg",
             "health": "/health",
@@ -125,25 +131,54 @@ def health_check():
             "flask": "ok",
             "ultramsg": "ok" if ULTRAMSG_TOKEN else "not_configured",
             "openai": "ok" if openai.api_key else "not_configured"
+        },
+        "config": {
+            "ultramsg_instance": ULTRAMSG_INSTANCE_ID,
+            "ultramsg_url": ULTRAMSG_BASE_URL
         }
     }), 200
 
 @app.route('/webhook/ultramsg', methods=['POST'])
 def webhook_ultramsg():
-    """Webhook para UltraMsg"""
+    """Webhook para UltraMsg - Estrutura corrigida"""
     try:
         data = request.get_json()
         
         if not data:
+            logger.warning("Webhook recebido sem dados")
             return jsonify({"status": "no_data"}), 400
         
-        logger.info(f"Webhook recebido: {data}")
+        logger.info(f"📨 Webhook recebido: {data}")
         
-        phone_number = data.get('from', '')
-        message_body = data.get('body', '')
+        # Verificar se é evento de mensagem recebida
+        if data.get('event_type') != 'message_received':
+            logger.info(f"Evento ignorado: {data.get('event_type')}")
+            return jsonify({"status": "event_ignored"}), 200
         
+        # Extrair dados da estrutura UltraMsg
+        message_data = data.get('data', {})
+        
+        if not message_data:
+            logger.warning("Dados da mensagem não encontrados")
+            return jsonify({"status": "no_message_data"}), 400
+        
+        # Extrair informações da mensagem
+        phone_number = message_data.get('from', '')
+        message_body = message_data.get('body', '')
+        sender_name = message_data.get('pushname', 'Cliente')
+        message_type = message_data.get('type', 'chat')
+        
+        # Validar dados essenciais
         if not phone_number or not message_body:
-            return jsonify({"status": "invalid_data"}), 400
+            logger.warning(f"Dados incompletos - Phone: {phone_number}, Body: {message_body}")
+            return jsonify({"status": "incomplete_data"}), 400
+        
+        # Ignorar mensagens próprias
+        if message_data.get('fromMe', False):
+            logger.info("Mensagem própria ignorada")
+            return jsonify({"status": "own_message_ignored"}), 200
+        
+        logger.info(f"📱 Mensagem de {sender_name} ({phone_number}): {message_body}")
         
         # Gerar resposta do bot
         bot_response = generate_bot_response(message_body)
@@ -151,15 +186,26 @@ def webhook_ultramsg():
         # Enviar resposta
         result = send_ultramsg_message(phone_number, bot_response)
         
-        return jsonify({
-            "status": "success",
-            "message_received": message_body,
-            "response_sent": bot_response,
-            "ultramsg_result": result
-        }), 200
+        if result.get('success'):
+            logger.info(f"✅ Resposta enviada com sucesso")
+            return jsonify({
+                "status": "success",
+                "message_received": message_body,
+                "response_sent": bot_response,
+                "sender": sender_name,
+                "ultramsg_result": result
+            }), 200
+        else:
+            logger.error(f"❌ Falha ao enviar resposta: {result}")
+            return jsonify({
+                "status": "send_failed",
+                "error": result.get('error'),
+                "message_received": message_body,
+                "response_generated": bot_response
+            }), 500
         
     except Exception as e:
-        logger.error(f"Erro no webhook: {str(e)}")
+        logger.error(f"❌ Erro no webhook: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/webhook/test', methods=['GET', 'POST'])
@@ -174,7 +220,8 @@ def webhook_test():
             "test_message": test_message,
             "bot_response": bot_response,
             "ultramsg_configured": bool(ULTRAMSG_TOKEN),
-            "openai_configured": bool(openai.api_key)
+            "openai_configured": bool(openai.api_key),
+            "ultramsg_url": ULTRAMSG_BASE_URL
         }), 200
         
     except Exception as e:
@@ -183,7 +230,7 @@ def webhook_test():
 
 @app.route('/api/send-message', methods=['POST'])
 def send_message():
-    """API para enviar mensagens"""
+    """API para enviar mensagens manualmente"""
     try:
         data = request.get_json()
         phone = data.get('phone')
@@ -214,6 +261,7 @@ AGENT_TEMPLATE = """
         .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
         .btn { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
         .btn:hover { background: #0056b3; }
+        .code { background: #f8f9fa; padding: 10px; border-radius: 5px; font-family: monospace; }
     </style>
 </head>
 <body>
@@ -228,21 +276,28 @@ AGENT_TEMPLATE = """
             📊 <strong>Configurações:</strong><br>
             • UltraMsg: {{ 'Configurado' if ultramsg_configured else 'Não configurado' }}<br>
             • OpenAI: {{ 'Configurado' if openai_configured else 'Não configurado' }}<br>
-            • Webhook: {{ webhook_url }}
+            • Webhook: {{ webhook_url }}<br>
+            • API UltraMsg: {{ ultramsg_api_url }}
         </div>
         
-        <div class="status warning">
-            ⚠️ <strong>Versão Simplificada:</strong> Esta é uma versão básica para resolver problemas de deploy.
-            Funcionalidades avançadas serão adicionadas após estabilização.
+        <div class="status success">
+            🎉 <strong>Webhook Funcionando!</strong> Mensagens estão sendo recebidas corretamente.
         </div>
         
-        <h3>🔧 Próximos Passos:</h3>
+        <h3>🔧 Status da Integração:</h3>
         <ol>
-            <li>Configure o webhook no UltraMsg: <code>{{ webhook_url }}</code></li>
-            <li>Teste enviando uma mensagem para seu WhatsApp Business</li>
-            <li>Monitore os logs no Render</li>
-            <li>Após funcionamento, implemente funcionalidades avançadas</li>
+            <li>✅ Webhook configurado no UltraMsg</li>
+            <li>✅ Mensagens chegando no bot</li>
+            <li>✅ Estrutura de dados corrigida</li>
+            <li>🔄 Testando envio de respostas</li>
         </ol>
+        
+        <h3>📱 Para testar:</h3>
+        <div class="code">
+            1. Envie uma mensagem para seu WhatsApp Business<br>
+            2. Verifique os logs no Render<br>
+            3. Aguarde resposta automática do bot
+        </div>
         
         <button class="btn" onclick="location.reload()">🔄 Atualizar Status</button>
     </div>
@@ -259,7 +314,8 @@ def agent_login():
     return render_template_string(AGENT_TEMPLATE, 
                                 ultramsg_configured=bool(ULTRAMSG_TOKEN),
                                 openai_configured=bool(openai.api_key),
-                                webhook_url=webhook_url)
+                                webhook_url=webhook_url,
+                                ultramsg_api_url=ULTRAMSG_BASE_URL)
 
 @app.errorhandler(404)
 def not_found(error):
@@ -276,5 +332,5 @@ def internal_error(error):
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     logger.info(f"🚀 Iniciando Bot UltraMsg na porta {port}")
+    logger.info(f"📡 UltraMsg API URL: {ULTRAMSG_BASE_URL}")
     app.run(host='0.0.0.0', port=port, debug=False)
-

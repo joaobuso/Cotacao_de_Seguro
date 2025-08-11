@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 try:
     # Importar a aplicação diretamente
-    from main_simples import app
+    from main import app
     
     logger.info("✅ Aplicação importada com sucesso")
     

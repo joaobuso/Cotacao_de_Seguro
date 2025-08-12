@@ -1,15 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-Bot de Cotação de Seguros - UltraMsg (Encoding Corrigido)
+Bot de Cotação de Seguros - UltraMsg com MongoDB e Painel de Agentes
 """
 
 import os
 import logging
 import requests
 import urllib.parse
-from datetime import datetime
-from flask import Flask, request, jsonify, render_template_string
+from datetime import datetime, timedelta
+from flask import Flask, request, jsonify, render_template_string, session, redirect, url_for
 from dotenv import load_dotenv
+import pymongo
+from bson import ObjectId
+import hashlib
 
 # Carregar variáveis de ambiente
 load_dotenv()
@@ -31,8 +34,25 @@ ULTRAMSG_INSTANCE_ID = os.getenv('ULTRAMSG_INSTANCE_ID')
 ULTRAMSG_TOKEN = os.getenv('ULTRAMSG_TOKEN')
 ULTRAMSG_BASE_URL = f"https://api.ultramsg.com/{ULTRAMSG_INSTANCE_ID}"
 
-# Armazenamento simples de dados dos clientes
-client_data = {}
+# Configuração MongoDB
+MONGO_URI = os.getenv('MONGO_URI', 'mongodb://localhost:27017/')
+DB_NAME = os.getenv('DB_NAME', 'equinos_seguros')
+
+# Conectar ao MongoDB
+try:
+    mongo_client = pymongo.MongoClient(MONGO_URI)
+    db = mongo_client[DB_NAME]
+    
+    # Coleções
+    conversations_collection = db.conversations
+    clients_collection = db.clients
+    agents_collection = db.agents
+    
+    logger.info("✅ Conectado ao MongoDB com sucesso")
+except Exception as e:
+    logger.error(f"❌ Erro ao conectar MongoDB: {str(e)}")
+    mongo_client = None
+    db = None
 
 # Campos obrigatórios para cotação
 REQUIRED_FIELDS = {
@@ -46,22 +66,56 @@ REQUIRED_FIELDS = {
     'endereco_cocheira': 'Endereco da Cocheira (CEP e cidade)'
 }
 
+# Agentes padrão (você pode adicionar mais)
+DEFAULT_AGENTS = [
+    {
+        'email': 'AGENT_agent1_EMAIL',
+        'name': 'Agente 1',
+        'password': 'agent123',  # Em produção, use hash
+        'role': 'agent',
+        'active': True
+    },
+    {
+        'email': 'AGENT_agent2_EMAIL', 
+        'name': 'Agente 2',
+        'password': 'agent123',
+        'role': 'agent',
+        'active': True
+    },
+    {
+        'email': 'admin@equinosseguros.com',
+        'name': 'Administrador',
+        'password': 'admin123',
+        'role': 'admin',
+        'active': True
+    }
+]
+
+def init_agents():
+    """Inicializar agentes padrão no MongoDB"""
+    if not db:
+        return
+    
+    try:
+        for agent in DEFAULT_AGENTS:
+            existing = agents_collection.find_one({'email': agent['email']})
+            if not existing:
+                # Hash da senha (simples para demo)
+                agent['password_hash'] = hashlib.md5(agent['password'].encode()).hexdigest()
+                del agent['password']
+                agent['created_at'] = datetime.utcnow()
+                agents_collection.insert_one(agent)
+                logger.info(f"Agente criado: {agent['email']}")
+    except Exception as e:
+        logger.error(f"Erro ao inicializar agentes: {str(e)}")
+
 def clean_text_for_whatsapp(text):
     """Remove ou substitui caracteres que causam problemas no WhatsApp"""
-    # Substituir caracteres especiais por versões simples
     replacements = {
-        'ç': 'c', 'Ç': 'C',
-        'ã': 'a', 'Ã': 'A',
-        'á': 'a', 'Á': 'A',
-        'à': 'a', 'À': 'A',
-        'â': 'a', 'Â': 'A',
-        'é': 'e', 'É': 'E',
-        'ê': 'e', 'Ê': 'E',
-        'í': 'i', 'Í': 'I',
-        'ó': 'o', 'Ó': 'O',
-        'ô': 'o', 'Ô': 'O',
-        'õ': 'o', 'Õ': 'O',
-        'ú': 'u', 'Ú': 'U',
+        'ç': 'c', 'Ç': 'C', 'ã': 'a', 'Ã': 'A', 'á': 'a', 'Á': 'A',
+        'à': 'a', 'À': 'A', 'â': 'a', 'Â': 'A', 'é': 'e', 'É': 'E',
+        'ê': 'e', 'Ê': 'E', 'í': 'i', 'Í': 'I', 'ó': 'o', 'Ó': 'O',
+        'ô': 'o', 'Ô': 'O', 'õ': 'o', 'Õ': 'O', 'ú': 'u', 'Ú': 'U',
         'ü': 'u', 'Ü': 'U'
     }
     
@@ -74,80 +128,116 @@ def send_ultramsg_message(phone, message):
     """Envia mensagem via UltraMsg com encoding correto"""
     try:
         url = f"{ULTRAMSG_BASE_URL}/messages/chat"
-        
-        # Limpar número de telefone
         clean_phone = phone.replace('@c.us', '').replace('+', '')
-        
-        # Limpar texto para evitar problemas de encoding
         clean_message = clean_text_for_whatsapp(message)
         
-        # Preparar dados
         data = {
             'token': ULTRAMSG_TOKEN,
             'to': clean_phone,
             'body': clean_message
         }
         
-        # Usar URL encoding adequado
         payload = urllib.parse.urlencode(data, encoding='utf-8')
-        
-        headers = {
-            'content-type': 'application/x-www-form-urlencoded; charset=utf-8'
-        }
+        headers = {'content-type': 'application/x-www-form-urlencoded; charset=utf-8'}
         
         logger.info(f"📤 Enviando mensagem para {clean_phone}: {clean_message[:50]}...")
         
         response = requests.post(url, data=payload, headers=headers, timeout=30)
         
         if response.status_code == 200:
-            logger.info(f"✅ Mensagem enviada com sucesso para {clean_phone}")
+            logger.info(f"✅ Mensagem enviada com sucesso")
             return {"success": True, "data": response.json()}
         else:
-            logger.error(f"❌ Erro ao enviar mensagem: {response.status_code} - {response.text}")
+            logger.error(f"❌ Erro ao enviar: {response.status_code}")
             return {"success": False, "error": f"HTTP {response.status_code}"}
             
     except Exception as e:
         logger.error(f"❌ Erro ao enviar mensagem: {str(e)}")
         return {"success": False, "error": str(e)}
 
+def save_conversation_to_db(phone, message, response, message_type='bot', agent_email=None):
+    """Salva conversa no MongoDB"""
+    if not db:
+        return False
+    
+    try:
+        conversation = {
+            'phone': phone,
+            'message': message,
+            'response': response,
+            'message_type': message_type,  # 'bot' ou 'human'
+            'agent_email': agent_email,
+            'timestamp': datetime.utcnow(),
+            'date': datetime.utcnow().strftime('%Y-%m-%d'),
+            'time': datetime.utcnow().strftime('%H:%M:%S')
+        }
+        
+        conversations_collection.insert_one(conversation)
+        logger.info(f"💾 Conversa salva no MongoDB: {phone}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Erro ao salvar conversa: {str(e)}")
+        return False
+
+def save_client_data_to_db(phone, data, status='collecting'):
+    """Salva dados do cliente no MongoDB"""
+    if not db:
+        return False
+    
+    try:
+        client_data = {
+            'phone': phone,
+            'data': data,
+            'status': status,
+            'updated_at': datetime.utcnow(),
+            'conversation_count': 1
+        }
+        
+        # Upsert - atualiza se existe, cria se não existe
+        clients_collection.update_one(
+            {'phone': phone},
+            {
+                '$set': client_data,
+                '$inc': {'conversation_count': 1}
+            },
+            upsert=True
+        )
+        
+        logger.info(f"💾 Dados do cliente salvos: {phone}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Erro ao salvar cliente: {str(e)}")
+        return False
+
+def get_client_data_from_db(phone):
+    """Obtém dados do cliente do MongoDB"""
+    if not db:
+        return None
+    
+    try:
+        client = clients_collection.find_one({'phone': phone})
+        return client
+    except Exception as e:
+        logger.error(f"❌ Erro ao buscar cliente: {str(e)}")
+        return None
+
 def extract_animal_data_simple(message, existing_data=None):
-    """Extração simples de dados sem caracteres especiais"""
+    """Extração simples de dados"""
     import re
     
     data = existing_data.copy() if existing_data else {}
     message_lower = message.lower()
     
-    # Padrões simples de extração
     patterns = {
-        'nome_animal': [
-            r'nome[:\s]+([a-z\s]+)', 
-            r'chama[:\s]+([a-z\s]+)',
-            r'cavalo[:\s]+([a-z\s]+)',
-            r'egua[:\s]+([a-z\s]+)'
-        ],
-        'valor_animal': [
-            r'valor[:\s]*r?\$?\s*([0-9.,]+)', 
-            r'vale[:\s]*r?\$?\s*([0-9.,]+)',
-            r'custa[:\s]*r?\$?\s*([0-9.,]+)'
-        ],
-        'raca': [
-            r'raca[:\s]+([a-z\s]+)', 
-            r'e\s+um[a]?\s+([a-z\s]+)',
-            r'quarto\s+de\s+milha',
-            r'mangalarga',
-            r'puro\s+sangue'
-        ],
+        'nome_animal': [r'nome[:\s]+([a-z\s]+)', r'chama[:\s]+([a-z\s]+)', r'cavalo[:\s]+([a-z\s]+)'],
+        'valor_animal': [r'valor[:\s]*r?\$?\s*([0-9.,]+)', r'vale[:\s]*r?\$?\s*([0-9.,]+)'],
+        'raca': [r'raca[:\s]+([a-z\s]+)', r'quarto\s+de\s+milha', r'mangalarga'],
         'sexo': [r'(inteiro|castrado|femea|macho|egua)'],
         'utilizacao': [r'(lazer|salto|laco|corrida|trabalho|esporte)'],
-        'registro': [
-            r'registro[:\s]*([a-z0-9]+)',
-            r'passaporte[:\s]*([a-z0-9]+)'
-        ],
-        'data_nascimento': [
-            r'nasceu[:\s]*([0-9/]+)',
-            r'nascimento[:\s]*([0-9/]+)',
-            r'([0-9]{1,2}/[0-9]{1,2}/[0-9]{4})'
-        ]
+        'registro': [r'registro[:\s]*([a-z0-9]+)', r'passaporte[:\s]*([a-z0-9]+)'],
+        'data_nascimento': [r'nasceu[:\s]*([0-9/]+)', r'([0-9]{1,2}/[0-9]{1,2}/[0-9]{4})']
     }
     
     for field, pattern_list in patterns.items():
@@ -162,19 +252,20 @@ def extract_animal_data_simple(message, existing_data=None):
     return data
 
 def generate_response_message(phone, message):
-    """Gera resposta personalizada baseada nos dados coletados"""
+    """Gera resposta personalizada"""
     try:
-        # Inicializar dados do cliente se não existir
-        if phone not in client_data:
-            client_data[phone] = {'data': {}, 'conversation_count': 0}
+        # Buscar dados existentes do cliente
+        client = get_client_data_from_db(phone)
         
-        client_data[phone]['conversation_count'] += 1
-        count = client_data[phone]['conversation_count']
+        if not client:
+            conversation_count = 1
+            existing_data = {}
+        else:
+            conversation_count = client.get('conversation_count', 0) + 1
+            existing_data = client.get('data', {})
         
         # Extrair dados da mensagem atual
-        existing_data = client_data[phone]['data']
         updated_data = extract_animal_data_simple(message, existing_data)
-        client_data[phone]['data'] = updated_data
         
         # Verificar campos faltantes
         missing_fields = []
@@ -186,14 +277,17 @@ def generate_response_message(phone, message):
             else:
                 missing_fields.append(f"❌ {field_name}")
         
+        # Determinar status
+        status = 'completed' if len(missing_fields) == 0 else 'collecting'
+        
+        # Salvar dados atualizados
+        save_client_data_to_db(phone, updated_data, status)
+        
         # Gerar resposta baseada no estado
-        if count == 1:
-            # Primeira mensagem - saudação
+        if conversation_count == 1:
             response = """🐴 *Ola! Bem-vindo a Equinos Seguros!*
 
-Sou seu assistente virtual e vou te ajudar a fazer a cotacao do seguro do seu equino de forma rapida e facil.
-
-Para gerar sua cotacao, preciso de algumas informacoes sobre seu animal:
+Sou seu assistente virtual e vou te ajudar a fazer a cotacao do seguro do seu equino.
 
 📋 *DADOS NECESSARIOS:*
 • Nome do Animal
@@ -205,29 +299,20 @@ Para gerar sua cotacao, preciso de algumas informacoes sobre seu animal:
 • Utilizacao (lazer, salto, laco, etc.)
 • Endereco da Cocheira (CEP e cidade)
 
-Voce pode enviar todas as informacoes de uma vez ou ir enviando aos poucos. Vou te ajudar a organizar tudo! 😊
-
-*Como prefere comecar?*"""
+Pode enviar as informacoes aos poucos. Vou te ajudar! 😊"""
         
         elif len(missing_fields) == 0:
-            # Todos os dados coletados
             data_summary = "\\n".join(collected_fields)
-            
-            response = f"""✅ *Perfeito! Coletei todas as informacoes necessarias:*
+            response = f"""✅ *Perfeito! Coletei todas as informacoes:*
 
 {data_summary}
 
 🎉 *Sua cotacao esta sendo processada!*
 
-Em breve voce recebera:
-• Proposta de seguro personalizada
-• Valores e coberturas
-• Condicoes especiais
-
+Em breve voce recebera sua proposta personalizada.
 Aguarde alguns instantes... 🔄"""
         
         else:
-            # Dados parciais coletados
             collected_list = "\\n".join(collected_fields) if collected_fields else "Nenhum dado coletado ainda."
             missing_list = "\\n".join(missing_fields)
             
@@ -239,251 +324,525 @@ Aguarde alguns instantes... 🔄"""
 *AINDA PRECISO DE:*
 {missing_list}
 
-Pode enviar as informacoes que faltam. Estou aqui para te ajudar! 😊"""
+Continue enviando as informacoes que faltam! 😊"""
+        
+        # Salvar conversa
+        save_conversation_to_db(phone, message, response, 'bot')
         
         return response
         
     except Exception as e:
         logger.error(f"Erro ao gerar resposta: {str(e)}")
-        return "Ola! Bem-vindo a Equinos Seguros. Vou ajuda-lo com sua cotacao. Por favor, me informe os dados do seu animal."
+        return "Ola! Bem-vindo a Equinos Seguros. Vou ajuda-lo com sua cotacao."
+
+def authenticate_agent(email, password):
+    """Autentica agente"""
+    if not db:
+        return None
+    
+    try:
+        password_hash = hashlib.md5(password.encode()).hexdigest()
+        agent = agents_collection.find_one({
+            'email': email,
+            'password_hash': password_hash,
+            'active': True
+        })
+        return agent
+    except Exception as e:
+        logger.error(f"Erro na autenticação: {str(e)}")
+        return None
 
 @app.route('/')
 def home():
     """Página inicial"""
     return jsonify({
         "status": "online",
-        "service": "Bot de Cotacao de Seguros - UltraMsg (Encoding Corrigido)",
-        "version": "2.3.0",
-        "encoding": "UTF-8 com fallback ASCII",
+        "service": "Bot de Cotacao de Seguros - MongoDB + Painel de Agentes",
+        "version": "3.0.0",
+        "features": [
+            "MongoDB integrado",
+            "Painel de agentes completo",
+            "Historico de conversas",
+            "Login por agente",
+            "Separacao bot vs humano"
+        ],
         "endpoints": {
             "webhook": "/webhook/ultramsg",
-            "health": "/health",
-            "test": "/webhook/test",
-            "agent": "/agent/login",
-            "data": "/api/client-data"
+            "agent_login": "/agent/login",
+            "agent_dashboard": "/agent/dashboard",
+            "conversations": "/agent/conversations"
         }
     })
 
 @app.route('/health')
 def health_check():
     """Health check"""
+    mongodb_status = "ok" if db else "disconnected"
+    
+    stats = {}
+    if db:
+        try:
+            stats = {
+                "total_clients": clients_collection.count_documents({}),
+                "total_conversations": conversations_collection.count_documents({}),
+                "bot_conversations": conversations_collection.count_documents({"message_type": "bot"}),
+                "human_conversations": conversations_collection.count_documents({"message_type": "human"}),
+                "active_agents": agents_collection.count_documents({"active": True})
+            }
+        except:
+            stats = {"error": "Could not fetch stats"}
+    
     return jsonify({
         "status": "healthy",
         "timestamp": str(datetime.utcnow()),
         "components": {
             "flask": "ok",
             "ultramsg": "ok" if ULTRAMSG_TOKEN else "not_configured",
-            "encoding": "utf-8_with_ascii_fallback"
+            "mongodb": mongodb_status
         },
-        "stats": {
-            "active_clients": len(client_data),
-            "total_conversations": sum(data.get('conversation_count', 0) for data in client_data.values())
-        }
+        "stats": stats
     }), 200
 
 @app.route('/webhook/ultramsg', methods=['POST'])
 def webhook_ultramsg():
-    """Webhook para UltraMsg - Encoding Corrigido"""
+    """Webhook para UltraMsg"""
     try:
         data = request.get_json()
         
-        if not data:
-            logger.warning("Webhook recebido sem dados")
-            return jsonify({"status": "no_data"}), 400
+        if not data or data.get('event_type') != 'message_received':
+            return jsonify({"status": "ignored"}), 200
         
-        logger.info(f"📨 Webhook recebido: {data}")
-        
-        # Verificar se é evento de mensagem recebida
-        if data.get('event_type') != 'message_received':
-            logger.info(f"Evento ignorado: {data.get('event_type')}")
-            return jsonify({"status": "event_ignored"}), 200
-        
-        # Extrair dados da estrutura UltraMsg
         message_data = data.get('data', {})
-        
-        if not message_data:
-            logger.warning("Dados da mensagem não encontrados")
-            return jsonify({"status": "no_message_data"}), 400
-        
-        # Extrair informações da mensagem
         phone_number = message_data.get('from', '')
         message_body = message_data.get('body', '')
         sender_name = message_data.get('pushname', 'Cliente')
         
-        # Validar dados essenciais
-        if not phone_number or not message_body:
-            logger.warning(f"Dados incompletos - Phone: {phone_number}, Body: {message_body}")
-            return jsonify({"status": "incomplete_data"}), 400
-        
-        # Ignorar mensagens próprias
-        if message_data.get('fromMe', False):
-            logger.info("Mensagem própria ignorada")
-            return jsonify({"status": "own_message_ignored"}), 200
+        if not phone_number or not message_body or message_data.get('fromMe', False):
+            return jsonify({"status": "ignored"}), 200
         
         logger.info(f"📱 Mensagem de {sender_name} ({phone_number}): {message_body}")
         
-        # Gerar resposta
+        # Gerar resposta do bot
         bot_response = generate_response_message(phone_number, message_body)
         
         # Enviar resposta
         result = send_ultramsg_message(phone_number, bot_response)
         
         if result.get('success'):
-            logger.info(f"✅ Resposta enviada com sucesso")
             return jsonify({
                 "status": "success",
                 "message_received": message_body,
                 "response_sent": bot_response,
-                "sender": sender_name,
-                "client_data": client_data.get(phone_number, {}),
-                "ultramsg_result": result
+                "sender": sender_name
             }), 200
         else:
-            logger.error(f"❌ Falha ao enviar resposta: {result}")
             return jsonify({
                 "status": "send_failed",
-                "error": result.get('error'),
-                "message_received": message_body,
-                "response_generated": bot_response
+                "error": result.get('error')
             }), 500
         
     except Exception as e:
         logger.error(f"❌ Erro no webhook: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/client-data', methods=['GET'])
-def get_client_data():
-    """API para visualizar dados dos clientes"""
-    return jsonify({
-        "total_clients": len(client_data),
-        "clients": client_data
-    })
+# PAINEL DE AGENTES
 
-@app.route('/webhook/test', methods=['GET', 'POST'])
-def webhook_test():
-    """Teste do webhook"""
+@app.route('/agent/login', methods=['GET', 'POST'])
+def agent_login():
+    """Login de agentes"""
+    if request.method == 'POST':
+        email = request.form.get('email')
+        password = request.form.get('password')
+        
+        agent = authenticate_agent(email, password)
+        if agent:
+            session['agent_email'] = agent['email']
+            session['agent_name'] = agent['name']
+            session['agent_role'] = agent['role']
+            return redirect(url_for('agent_dashboard'))
+        else:
+            return render_template_string(LOGIN_TEMPLATE, error="Email ou senha incorretos")
+    
+    return render_template_string(LOGIN_TEMPLATE)
+
+@app.route('/agent/logout')
+def agent_logout():
+    """Logout de agentes"""
+    session.clear()
+    return redirect(url_for('agent_login'))
+
+@app.route('/agent/dashboard')
+def agent_dashboard():
+    """Dashboard do agente"""
+    if 'agent_email' not in session:
+        return redirect(url_for('agent_login'))
+    
+    if not db:
+        return "MongoDB não conectado", 500
+    
     try:
-        test_phone = "5519988118043@c.us"
-        test_message = "Ola, quero fazer uma cotacao para meu cavalo Relampago, ele vale R$ 50.000"
+        # Estatísticas
+        stats = {
+            "total_clients": clients_collection.count_documents({}),
+            "total_conversations": conversations_collection.count_documents({}),
+            "bot_conversations": conversations_collection.count_documents({"message_type": "bot"}),
+            "human_conversations": conversations_collection.count_documents({"message_type": "human"}),
+            "today_conversations": conversations_collection.count_documents({
+                "date": datetime.utcnow().strftime('%Y-%m-%d')
+            })
+        }
         
-        # Simular processamento
-        bot_response = generate_response_message(test_phone, test_message)
+        # Conversas recentes
+        recent_conversations = list(conversations_collection.find().sort("timestamp", -1).limit(10))
         
-        return jsonify({
-            "status": "test_success",
-            "test_message": test_message,
-            "bot_response": bot_response,
-            "client_data": client_data.get(test_phone, {}),
-            "ultramsg_configured": bool(ULTRAMSG_TOKEN),
-            "encoding_test": {
-                "original": "Olá, cotação, informações",
-                "cleaned": clean_text_for_whatsapp("Olá, cotação, informações")
-            }
-        }), 200
-        
+        return render_template_string(DASHBOARD_TEMPLATE, 
+                                    agent_name=session['agent_name'],
+                                    agent_email=session['agent_email'],
+                                    stats=stats,
+                                    recent_conversations=recent_conversations)
+    
     except Exception as e:
-        logger.error(f"Erro no teste: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Erro no dashboard: {str(e)}")
+        return f"Erro: {str(e)}", 500
 
-# Template para painel de agente
-AGENT_TEMPLATE = """
+@app.route('/agent/conversations')
+def agent_conversations():
+    """Lista de conversas por cliente"""
+    if 'agent_email' not in session:
+        return redirect(url_for('agent_login'))
+    
+    if not db:
+        return "MongoDB não conectado", 500
+    
+    try:
+        # Buscar clientes únicos
+        pipeline = [
+            {"$group": {
+                "_id": "$phone",
+                "last_message": {"$last": "$message"},
+                "last_response": {"$last": "$response"},
+                "last_timestamp": {"$last": "$timestamp"},
+                "message_count": {"$sum": 1},
+                "bot_count": {"$sum": {"$cond": [{"$eq": ["$message_type", "bot"]}, 1, 0]}},
+                "human_count": {"$sum": {"$cond": [{"$eq": ["$message_type", "human"]}, 1, 0]}}
+            }},
+            {"$sort": {"last_timestamp": -1}}
+        ]
+        
+        clients_summary = list(conversations_collection.aggregate(pipeline))
+        
+        return render_template_string(CONVERSATIONS_TEMPLATE,
+                                    agent_name=session['agent_name'],
+                                    clients=clients_summary)
+    
+    except Exception as e:
+        logger.error(f"Erro nas conversas: {str(e)}")
+        return f"Erro: {str(e)}", 500
+
+@app.route('/agent/conversations/<phone>')
+def agent_conversation_detail(phone):
+    """Detalhes da conversa de um cliente"""
+    if 'agent_email' not in session:
+        return redirect(url_for('agent_login'))
+    
+    if not db:
+        return "MongoDB não conectado", 500
+    
+    try:
+        # Buscar todas as conversas do cliente
+        conversations = list(conversations_collection.find({"phone": phone}).sort("timestamp", 1))
+        
+        # Buscar dados do cliente
+        client_data = clients_collection.find_one({"phone": phone})
+        
+        return render_template_string(CONVERSATION_DETAIL_TEMPLATE,
+                                    agent_name=session['agent_name'],
+                                    phone=phone,
+                                    conversations=conversations,
+                                    client_data=client_data)
+    
+    except Exception as e:
+        logger.error(f"Erro nos detalhes: {str(e)}")
+        return f"Erro: {str(e)}", 500
+
+# TEMPLATES HTML
+
+LOGIN_TEMPLATE = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Painel de Agente - Equinos Seguros</title>
+    <title>Login - Painel de Agentes</title>
     <meta charset="utf-8">
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-        .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { color: #333; }
-        .status { padding: 15px; margin: 10px 0; border-radius: 5px; }
-        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
-        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
-        .btn { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; margin: 5px; }
-        .btn:hover { background: #0056b3; }
-        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; }
-        .stat-card { background: #f8f9fa; padding: 15px; border-radius: 5px; text-align: center; }
-        .stat-number { font-size: 24px; font-weight: bold; color: #007bff; }
+        body { font-family: Arial, sans-serif; background: #f5f5f5; margin: 0; padding: 50px; }
+        .login-container { max-width: 400px; margin: 0 auto; background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #333; margin-bottom: 30px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 5px; color: #555; }
+        input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #0056b3; }
+        .error { color: red; text-align: center; margin-top: 10px; }
+        .agents-list { background: #f8f9fa; padding: 15px; border-radius: 4px; margin-top: 20px; font-size: 12px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🤖 Painel de Agente - Bot Encoding Corrigido</h1>
+    <div class="login-container">
+        <h1>🤖 Painel de Agentes</h1>
+        <h2>Equinos Seguros</h2>
         
-        <div class="status success">
-            ✅ <strong>Bot Online com Encoding Corrigido</strong> - Caracteres especiais funcionando
-        </div>
-        
-        <div class="stats">
-            <div class="stat-card">
-                <div class="stat-number">{{ active_clients }}</div>
-                <div>Clientes Ativos</div>
+        <form method="POST">
+            <div class="form-group">
+                <label>Email:</label>
+                <input type="email" name="email" required>
             </div>
-            <div class="stat-card">
-                <div class="stat-number">{{ total_conversations }}</div>
-                <div>Conversas Totais</div>
+            <div class="form-group">
+                <label>Senha:</label>
+                <input type="password" name="password" required>
             </div>
-            <div class="stat-card">
-                <div class="stat-number">8</div>
-                <div>Campos Coletados</div>
-            </div>
-        </div>
+            <button type="submit">Entrar</button>
+        </form>
         
-        <div class="status info">
-            🔧 <strong>Correcoes Aplicadas:</strong><br>
-            • ✅ Encoding UTF-8 com fallback ASCII<br>
-            • ✅ Substituicao de caracteres especiais<br>
-            • ✅ Headers corretos para UltraMsg<br>
-            • ✅ URL encoding adequado<br>
-            • ✅ Texto limpo para WhatsApp
-        </div>
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
         
-        <div class="status warning">
-            📝 <strong>Caracteres Substituidos:</strong><br>
-            ç → c, ã → a, é → e, ô → o, etc.<br>
-            Isso garante compatibilidade total com WhatsApp
-        </div>
-        
-        <h3>🔧 Acoes Disponiveis:</h3>
-        <button class="btn" onclick="location.reload()">🔄 Atualizar Status</button>
-        <button class="btn" onclick="window.open('/api/client-data', '_blank')">📊 Ver Dados dos Clientes</button>
-        <button class="btn" onclick="window.open('/webhook/test', '_blank')">🧪 Testar Bot</button>
-        
-        <div class="status success">
-            🎯 <strong>Teste Agora:</strong><br>
-            Envie "Ola" para seu WhatsApp Business e veja a mensagem formatada corretamente!
+        <div class="agents-list">
+            <strong>Agentes de Teste:</strong><br>
+            • AGENT_agent1_EMAIL / agent123<br>
+            • AGENT_agent2_EMAIL / agent123<br>
+            • admin@equinosseguros.com / admin123
         </div>
     </div>
 </body>
 </html>
 """
 
-@app.route('/agent/login')
-def agent_login():
-    """Painel de agente"""
-    active_clients = len(client_data)
-    total_conversations = sum(data.get('conversation_count', 0) for data in client_data.values())
+DASHBOARD_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard - {{ agent_name }}</title>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; background: #f5f5f5; }
+        .header { background: #007bff; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .container { padding: 20px; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px; }
+        .stat-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; }
+        .stat-number { font-size: 32px; font-weight: bold; color: #007bff; }
+        .stat-label { color: #666; margin-top: 5px; }
+        .section { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .btn { padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; margin: 5px; }
+        .btn:hover { background: #0056b3; }
+        .conversation { border-bottom: 1px solid #eee; padding: 10px 0; }
+        .conversation:last-child { border-bottom: none; }
+        .phone { font-weight: bold; color: #007bff; }
+        .message { color: #666; margin: 5px 0; }
+        .timestamp { font-size: 12px; color: #999; }
+        .type-bot { color: #28a745; }
+        .type-human { color: #dc3545; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 Dashboard - {{ agent_name }}</h1>
+        <div>
+            <a href="/agent/conversations" class="btn">💬 Conversas</a>
+            <a href="/agent/logout" class="btn">🚪 Sair</a>
+        </div>
+    </div>
     
-    return render_template_string(AGENT_TEMPLATE, 
-                                active_clients=active_clients,
-                                total_conversations=total_conversations)
+    <div class="container">
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.total_clients }}</div>
+                <div class="stat-label">Clientes Totais</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.total_conversations }}</div>
+                <div class="stat-label">Conversas Totais</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.bot_conversations }}</div>
+                <div class="stat-label">Atendidas pelo Bot</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.human_conversations }}</div>
+                <div class="stat-label">Atendimento Humano</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.today_conversations }}</div>
+                <div class="stat-label">Conversas Hoje</div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h3>📱 Conversas Recentes</h3>
+            {% for conv in recent_conversations %}
+            <div class="conversation">
+                <div class="phone">{{ conv.phone }}</div>
+                <div class="message">{{ conv.message[:100] }}...</div>
+                <div class="timestamp">
+                    <span class="type-{{ conv.message_type }}">{{ conv.message_type.upper() }}</span>
+                    - {{ conv.timestamp.strftime('%d/%m/%Y %H:%M') }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</body>
+</html>
+"""
 
-@app.errorhandler(404)
-def not_found(error):
-    return jsonify({
-        "error": "Endpoint nao encontrado",
-        "available_endpoints": ["/", "/health", "/webhook/ultramsg", "/webhook/test", "/agent/login", "/api/client-data"]
-    }), 404
+CONVERSATIONS_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Conversas - {{ agent_name }}</title>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; background: #f5f5f5; }
+        .header { background: #007bff; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .container { padding: 20px; }
+        .client-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 15px; }
+        .client-phone { font-size: 18px; font-weight: bold; color: #007bff; margin-bottom: 10px; }
+        .client-stats { display: flex; gap: 20px; margin-bottom: 10px; }
+        .stat { font-size: 14px; }
+        .stat-bot { color: #28a745; }
+        .stat-human { color: #dc3545; }
+        .last-message { color: #666; font-style: italic; }
+        .timestamp { font-size: 12px; color: #999; margin-top: 5px; }
+        .btn { padding: 8px 16px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; font-size: 14px; }
+        .btn:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>💬 Conversas por Cliente</h1>
+        <div>
+            <a href="/agent/dashboard" class="btn">📊 Dashboard</a>
+            <a href="/agent/logout" class="btn">🚪 Sair</a>
+        </div>
+    </div>
+    
+    <div class="container">
+        {% for client in clients %}
+        <div class="client-card">
+            <div class="client-phone">📱 {{ client._id }}</div>
+            <div class="client-stats">
+                <div class="stat">Total: {{ client.message_count }} mensagens</div>
+                <div class="stat stat-bot">Bot: {{ client.bot_count }}</div>
+                <div class="stat stat-human">Humano: {{ client.human_count }}</div>
+            </div>
+            <div class="last-message">"{{ client.last_message[:100] }}..."</div>
+            <div class="timestamp">Última atividade: {{ client.last_timestamp.strftime('%d/%m/%Y %H:%M') }}</div>
+            <div style="margin-top: 10px;">
+                <a href="/agent/conversations/{{ client._id }}" class="btn">Ver Conversa Completa</a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</body>
+</html>
+"""
 
-@app.errorhandler(500)
-def internal_error(error):
-    logger.error(f"Erro interno: {str(error)}")
-    return jsonify({"error": "Erro interno do servidor"}), 500
+CONVERSATION_DETAIL_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Conversa - {{ phone }}</title>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; background: #f5f5f5; }
+        .header { background: #007bff; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .container { padding: 20px; display: grid; grid-template-columns: 1fr 300px; gap: 20px; }
+        .conversation-panel { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .client-panel { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .message { margin-bottom: 20px; padding: 15px; border-radius: 8px; }
+        .message-user { background: #e3f2fd; border-left: 4px solid #2196f3; }
+        .message-bot { background: #f1f8e9; border-left: 4px solid #4caf50; }
+        .message-human { background: #fff3e0; border-left: 4px solid #ff9800; }
+        .message-header { font-weight: bold; margin-bottom: 5px; }
+        .message-content { margin-bottom: 5px; }
+        .message-timestamp { font-size: 12px; color: #666; }
+        .client-data { margin-bottom: 15px; }
+        .field { margin-bottom: 8px; }
+        .field-label { font-weight: bold; color: #333; }
+        .field-value { color: #666; }
+        .btn { padding: 8px 16px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>💬 Conversa: {{ phone }}</h1>
+        <div>
+            <a href="/agent/conversations" class="btn">⬅ Voltar</a>
+            <a href="/agent/logout" class="btn">🚪 Sair</a>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="conversation-panel">
+            <h3>Histórico da Conversa</h3>
+            {% for conv in conversations %}
+            <div class="message message-{{ 'user' if loop.index0 % 2 == 0 else conv.message_type }}">
+                <div class="message-header">
+                    {% if loop.index0 % 2 == 0 %}
+                        👤 Cliente
+                    {% elif conv.message_type == 'bot' %}
+                        🤖 Bot
+                    {% else %}
+                        👨‍💼 Agente {{ conv.agent_email or 'Desconhecido' }}
+                    {% endif %}
+                </div>
+                <div class="message-content">
+                    {% if loop.index0 % 2 == 0 %}
+                        {{ conv.message }}
+                    {% else %}
+                        {{ conv.response }}
+                    {% endif %}
+                </div>
+                <div class="message-timestamp">{{ conv.timestamp.strftime('%d/%m/%Y %H:%M:%S') }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <div class="client-panel">
+            <h3>📋 Dados do Cliente</h3>
+            {% if client_data and client_data.data %}
+            <div class="client-data">
+                {% for key, value in client_data.data.items() %}
+                <div class="field">
+                    <div class="field-label">{{ key.replace('_', ' ').title() }}:</div>
+                    <div class="field-value">{{ value }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="field">
+                <div class="field-label">Status:</div>
+                <div class="field-value">{{ client_data.status }}</div>
+            </div>
+            <div class="field">
+                <div class="field-label">Última atualização:</div>
+                <div class="field-value">{{ client_data.updated_at.strftime('%d/%m/%Y %H:%M') }}</div>
+            </div>
+            {% else %}
+            <p>Nenhum dado coletado ainda.</p>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+# Inicializar agentes ao iniciar a aplicação
+if db:
+    init_agents()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    logger.info(f"🚀 Iniciando Bot com Encoding Corrigido na porta {port}")
+    logger.info(f"🚀 Iniciando Bot com MongoDB e Painel de Agentes na porta {port}")
     logger.info(f"📡 UltraMsg API URL: {ULTRAMSG_BASE_URL}")
-    logger.info(f"🔤 Encoding: UTF-8 com fallback ASCII para caracteres especiais")
+    logger.info(f"🗄️ MongoDB: {'Conectado' if db else 'Desconectado'}")
     app.run(host='0.0.0.0', port=port, debug=False)

@@ -1,6 +1,6 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
 """
-WSGI Entry Point Simplificado - Bot UltraMsg
+WSGI entry point - Porta Corrigida para Render
 """
 
 import os
@@ -11,21 +11,36 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# FORÇAR PORTA CORRETA
+PORT = int(os.environ.get('PORT', 8080))
+logger.info(f"🔧 Porta configurada: {PORT}")
+
 try:
-    # Importar a aplicação diretamente
+    logger.info("🔄 Importando aplicação...")
+    
+    # Importar aplicação
     from main import app
     
     logger.info("✅ Aplicação importada com sucesso")
     
-except ImportError as e:
-    logger.error(f"❌ Erro de importação: {e}")
-    raise
+    # Verificar configurações
+    mongo_uri = os.getenv('MONGO_URI')
+    ultramsg_instance = os.getenv('ULTRAMSG_INSTANCE_ID')
+    ultramsg_token = os.getenv('ULTRAMSG_TOKEN')
+    
+    logger.info(f"🗄️ MongoDB: {'Configurado' if mongo_uri else 'Não configurado'}")
+    logger.info(f"📡 UltraMsg Instance: {ultramsg_instance or 'Não configurado'}")
+    logger.info(f"🔑 UltraMsg Token: {'Configurado' if ultramsg_token else 'Não configurado'}")
+    
+    logger.info(f"🚀 WSGI pronto na porta {PORT}")
 
 except Exception as e:
-    logger.error(f"❌ Erro geral: {e}")
+    logger.error(f"❌ Erro crítico: {str(e)}")
     raise
 
-# Para debug local
+# Exportar para Gunicorn
+application = app
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    logger.info(f"🚀 Executando diretamente na porta {PORT}")
+    app.run(host='0.0.0.0', port=PORT, debug=False)

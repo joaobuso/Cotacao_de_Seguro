@@ -1,16 +1,13 @@
 services:
   - type: web
-    name: bot-cotacao-seguros-ultramsg
+    name: whatsapp-insurance-bot
     env: python
-    plan: free
-    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt
     startCommand: gunicorn wsgi:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
-      - key: PIP_DISABLE_PIP_VERSION_CHECK
-        value: 1
-      - key: PIP_NO_CACHE_DIR
-        value: 1
-    healthCheckPath: /health
-
+      - key: FLASK_ENV
+        value: production
+      - key: FLASK_DEBUG
+        value: False

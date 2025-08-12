@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Bot de Cotação de Seguros - UltraMsg com MongoDB e Painel de Agentes
+Bot de Cotação de Seguros - UltraMsg com MongoDB e Painel de Agentes (Corrigido)
 """
 
 import os
@@ -38,21 +38,32 @@ ULTRAMSG_BASE_URL = f"https://api.ultramsg.com/{ULTRAMSG_INSTANCE_ID}"
 MONGO_URI = os.getenv('MONGO_URI', 'mongodb://localhost:27017/')
 DB_NAME = os.getenv('DB_NAME', 'equinos_seguros')
 
+# Variáveis globais para MongoDB
+mongo_client = None
+db = None
+conversations_collection = None
+clients_collection = None
+agents_collection = None
+mongodb_connected = False
+
 # Conectar ao MongoDB
 try:
     mongo_client = pymongo.MongoClient(MONGO_URI)
     db = mongo_client[DB_NAME]
+    
+    # Testar conexão
+    mongo_client.admin.command('ping')
     
     # Coleções
     conversations_collection = db.conversations
     clients_collection = db.clients
     agents_collection = db.agents
     
+    mongodb_connected = True
     logger.info("✅ Conectado ao MongoDB com sucesso")
 except Exception as e:
     logger.error(f"❌ Erro ao conectar MongoDB: {str(e)}")
-    mongo_client = None
-    db = None
+    mongodb_connected = False
 
 # Campos obrigatórios para cotação
 REQUIRED_FIELDS = {
@@ -66,12 +77,12 @@ REQUIRED_FIELDS = {
     'endereco_cocheira': 'Endereco da Cocheira (CEP e cidade)'
 }
 
-# Agentes padrão (você pode adicionar mais)
+# Agentes padrão
 DEFAULT_AGENTS = [
     {
         'email': 'AGENT_agent1_EMAIL',
         'name': 'Agente 1',
-        'password': 'agent123',  # Em produção, use hash
+        'password': 'agent123',
         'role': 'agent',
         'active': True
     },
@@ -93,18 +104,18 @@ DEFAULT_AGENTS = [
 
 def init_agents():
     """Inicializar agentes padrão no MongoDB"""
-    if not db:
+    if not mongodb_connected:
         return
     
     try:
         for agent in DEFAULT_AGENTS:
             existing = agents_collection.find_one({'email': agent['email']})
             if not existing:
-                # Hash da senha (simples para demo)
-                agent['password_hash'] = hashlib.md5(agent['password'].encode()).hexdigest()
-                del agent['password']
-                agent['created_at'] = datetime.utcnow()
-                agents_collection.insert_one(agent)
+                agent_data = agent.copy()
+                agent_data['password_hash'] = hashlib.md5(agent['password'].encode()).hexdigest()
+                del agent_data['password']
+                agent_data['created_at'] = datetime.utcnow()
+                agents_collection.insert_one(agent_data)
                 logger.info(f"Agente criado: {agent['email']}")
     except Exception as e:
         logger.error(f"Erro ao inicializar agentes: {str(e)}")
@@ -157,7 +168,7 @@ def send_ultramsg_message(phone, message):
 
 def save_conversation_to_db(phone, message, response, message_type='bot', agent_email=None):
     """Salva conversa no MongoDB"""
-    if not db:
+    if not mongodb_connected:
         return False
     
     try:
@@ -165,7 +176,7 @@ def save_conversation_to_db(phone, message, response, message_type='bot', agent_
             'phone': phone,
             'message': message,
             'response': response,
-            'message_type': message_type,  # 'bot' ou 'human'
+            'message_type': message_type,
             'agent_email': agent_email,
             'timestamp': datetime.utcnow(),
             'date': datetime.utcnow().strftime('%Y-%m-%d'),
@@ -182,7 +193,7 @@ def save_conversation_to_db(phone, message, response, message_type='bot', agent_
 
 def save_client_data_to_db(phone, data, status='collecting'):
     """Salva dados do cliente no MongoDB"""
-    if not db:
+    if not mongodb_connected:
         return False
     
     try:
@@ -190,12 +201,11 @@ def save_client_data_to_db(phone, data, status='collecting'):
             'phone': phone,
             'data': data,
             'status': status,
-            'updated_at': datetime.utcnow(),
-            'conversation_count': 1
+            'updated_at': datetime.utcnow()
         }
         
         # Upsert - atualiza se existe, cria se não existe
-        clients_collection.update_one(
+        result = clients_collection.update_one(
             {'phone': phone},
             {
                 '$set': client_data,
@@ -213,7 +223,7 @@ def save_client_data_to_db(phone, data, status='collecting'):
 
 def get_client_data_from_db(phone):
     """Obtém dados do cliente do MongoDB"""
-    if not db:
+    if not mongodb_connected:
         return None
     
     try:
@@ -257,7 +267,7 @@ def generate_response_message(phone, message):
         # Buscar dados existentes do cliente
         client = get_client_data_from_db(phone)
         
-        if not client:
+        if client is None:
             conversation_count = 1
             existing_data = {}
         else:
@@ -337,7 +347,7 @@ Continue enviando as informacoes que faltam! 😊"""
 
 def authenticate_agent(email, password):
     """Autentica agente"""
-    if not db:
+    if not mongodb_connected:
         return None
     
     try:
@@ -358,7 +368,8 @@ def home():
     return jsonify({
         "status": "online",
         "service": "Bot de Cotacao de Seguros - MongoDB + Painel de Agentes",
-        "version": "3.0.0",
+        "version": "3.1.0",
+        "mongodb_connected": mongodb_connected,
         "features": [
             "MongoDB integrado",
             "Painel de agentes completo",
@@ -377,10 +388,10 @@ def home():
 @app.route('/health')
 def health_check():
     """Health check"""
-    mongodb_status = "ok" if db else "disconnected"
+    mongodb_status = "connected" if mongodb_connected else "disconnected"
     
     stats = {}
-    if db:
+    if mongodb_connected:
         try:
             stats = {
                 "total_clients": clients_collection.count_documents({}),
@@ -389,8 +400,8 @@ def health_check():
                 "human_conversations": conversations_collection.count_documents({"message_type": "human"}),
                 "active_agents": agents_collection.count_documents({"active": True})
             }
-        except:
-            stats = {"error": "Could not fetch stats"}
+        except Exception as e:
+            stats = {"error": f"Could not fetch stats: {str(e)}"}
     
     return jsonify({
         "status": "healthy",
@@ -433,7 +444,8 @@ def webhook_ultramsg():
                 "status": "success",
                 "message_received": message_body,
                 "response_sent": bot_response,
-                "sender": sender_name
+                "sender": sender_name,
+                "mongodb_connected": mongodb_connected
             }), 200
         else:
             return jsonify({
@@ -450,12 +462,15 @@ def webhook_ultramsg():
 @app.route('/agent/login', methods=['GET', 'POST'])
 def agent_login():
     """Login de agentes"""
+    if not mongodb_connected:
+        return "MongoDB não conectado. Verifique a configuração.", 500
+    
     if request.method == 'POST':
         email = request.form.get('email')
         password = request.form.get('password')
         
         agent = authenticate_agent(email, password)
-        if agent:
+        if agent is not None:
             session['agent_email'] = agent['email']
             session['agent_name'] = agent['name']
             session['agent_role'] = agent['role']
@@ -477,7 +492,7 @@ def agent_dashboard():
     if 'agent_email' not in session:
         return redirect(url_for('agent_login'))
     
-    if not db:
+    if not mongodb_connected:
         return "MongoDB não conectado", 500
     
     try:
@@ -511,7 +526,7 @@ def agent_conversations():
     if 'agent_email' not in session:
         return redirect(url_for('agent_login'))
     
-    if not db:
+    if not mongodb_connected:
         return "MongoDB não conectado", 500
     
     try:
@@ -545,7 +560,7 @@ def agent_conversation_detail(phone):
     if 'agent_email' not in session:
         return redirect(url_for('agent_login'))
     
-    if not db:
+    if not mongodb_connected:
         return "MongoDB não conectado", 500
     
     try:
@@ -565,7 +580,7 @@ def agent_conversation_detail(phone):
         logger.error(f"Erro nos detalhes: {str(e)}")
         return f"Erro: {str(e)}", 500
 
-# TEMPLATES HTML
+# TEMPLATES HTML (mesmos de antes)
 
 LOGIN_TEMPLATE = """
 <!DOCTYPE html>
@@ -837,12 +852,12 @@ CONVERSATION_DETAIL_TEMPLATE = """
 """
 
 # Inicializar agentes ao iniciar a aplicação
-if db:
+if mongodb_connected:
     init_agents()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     logger.info(f"🚀 Iniciando Bot com MongoDB e Painel de Agentes na porta {port}")
     logger.info(f"📡 UltraMsg API URL: {ULTRAMSG_BASE_URL}")
-    logger.info(f"🗄️ MongoDB: {'Conectado' if db else 'Desconectado'}")
+    logger.info(f"🗄️ MongoDB: {'Conectado' if mongodb_connected else 'Desconectado'}")
     app.run(host='0.0.0.0', port=port, debug=False)

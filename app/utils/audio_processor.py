@@ -234,6 +234,6 @@ class AudioProcessor:
         Returns:
             URL pública do arquivo
         """
-        base_url = os.getenv('BASE_URL', 'http://localhost:8080')
+        base_url = os.getenv('BASE_URL', 'http://localhost:10000')
         return f"{base_url}/static_audio/{filename}"
 

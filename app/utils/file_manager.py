@@ -17,7 +17,7 @@ class FileManager:
     """
     
     def __init__(self):
-        self.base_url = os.getenv('BASE_URL', 'http://localhost:8080')
+        self.base_url = os.getenv('BASE_URL', 'http://localhost:10000')
         self.static_files_dir = os.path.join(os.getcwd(), 'static_files')
         self.cloudinary_enabled = self._check_cloudinary()
         

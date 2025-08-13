@@ -339,7 +339,7 @@ def dashboard():
         
         # Verificar status do sistema
         instance_id = os.getenv('ULTRAMSG_INSTANCE_ID')
-        base_url = os.getenv('BASE_URL', 'http://localhost:8080')
+        base_url = os.getenv('BASE_URL', 'http://localhost:10000')
         webhook_url = f"{base_url}/webhook/ultramsg"
         db_connected = database.check_connection()
         

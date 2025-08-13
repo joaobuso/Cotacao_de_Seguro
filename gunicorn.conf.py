@@ -1,7 +1,7 @@
 import os
 
 # Configuração do Gunicorn para Render
-bind = f"0.0.0.0:{os.environ.get('PORT', 8080)}"
+bind = f"0.0.0.0:{os.environ.get('PORT', 10000)}"
 workers = 1
 worker_class = "sync"
 worker_connections = 1000
@@ -17,5 +17,5 @@ errorlog = "-"
 loglevel = "info"
 access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"'
 
-print(f"🔧 Gunicorn configurado para porta: {os.environ.get('PORT', 8080)}")
+print(f"🔧 Gunicorn configurado para porta: {os.environ.get('PORT', 10000)}")
 

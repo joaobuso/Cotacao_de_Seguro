@@ -856,7 +856,7 @@ if mongodb_connected:
     init_agents()
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8080))
+    port = int(os.environ.get('PORT', 10000))
     logger.info(f"🚀 Iniciando Bot com MongoDB e Painel de Agentes na porta {port}")
     logger.info(f"📡 UltraMsg API URL: {ULTRAMSG_BASE_URL}")
     logger.info(f"🗄️ MongoDB: {'Conectado' if mongodb_connected else 'Desconectado'}")

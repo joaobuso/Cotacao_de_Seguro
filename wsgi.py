@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # FORÇAR PORTA CORRETA
-PORT = int(os.environ.get('PORT', 8080))
+PORT = int(os.environ.get('PORT', 10000))
 logger.info(f"🔧 Porta configurada: {PORT}")
 
 try:

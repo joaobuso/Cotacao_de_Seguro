@@ -80,14 +80,14 @@ REQUIRED_FIELDS = {
 # Agentes padrão
 DEFAULT_AGENTS = [
     {
-        'email': 'AGENT_agent1_EMAIL',
+        'email': 'agent1@equinos.com',
         'name': 'Agente 1',
         'password': 'agent123',
         'role': 'agent',
         'active': True
     },
     {
-        'email': 'AGENT_agent2_EMAIL', 
+        'email': 'agent2@equinos.com', 
         'name': 'Agente 2',
         'password': 'agent123',
         'role': 'agent',

@@ -184,30 +184,51 @@ def clean_text_for_whatsapp(text):
     return text
 
 def send_ultramsg_message(phone, message):
-    """Envia mensagem via UltraMsg"""
+    """Envia mensagem via UltraMsg - VERSÃO CORRIGIDA"""
     try:
+        # Limpar número - remover @c.us e outros caracteres
+        clean_phone = phone.replace('@c.us', '').replace('+', '').replace('-', '').replace(' ', '')
+        
+        # Garantir que tem código do país (55 para Brasil)
+        if not clean_phone.startswith('55') and len(clean_phone) >= 10:
+            clean_phone = '55' + clean_phone
+        
+        # URL correta da API UltraMsg
         url = f"{ULTRAMSG_BASE_URL}/messages/chat"
-        clean_phone = phone.replace('@c.us', '').replace('+', '')
         clean_message = clean_text_for_whatsapp(message)
         
+        # Dados no formato correto
         data = {
             'token': ULTRAMSG_TOKEN,
-            'to': clean_phone,
+            'to': clean_phone,  # Apenas números
             'body': clean_message
         }
         
-        payload = urllib.parse.urlencode(data, encoding='utf-8')
-        headers = {'content-type': 'application/x-www-form-urlencoded; charset=utf-8'}
+        # Headers corretos
+        headers = {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
         
         logger.info(f"📤 Enviando para {clean_phone}: {clean_message[:50]}...")
+        logger.info(f"🔗 URL: {url}")
+        logger.info(f"📋 Dados: token={ULTRAMSG_TOKEN[:10]}..., to={clean_phone}, body={clean_message[:30]}...")
         
-        response = requests.post(url, data=payload, headers=headers, timeout=10)
+        # Enviar como form data
+        response = requests.post(url, data=data, headers=headers, timeout=15)
+        
+        logger.info(f"📊 Status: {response.status_code}")
+        logger.info(f"📄 Resposta: {response.text[:200]}")
         
         if response.status_code == 200:
-            logger.info("✅ Mensagem enviada")
-            return True
+            response_json = response.json()
+            if response_json.get('sent'):
+                logger.info("✅ Mensagem enviada com sucesso")
+                return True
+            else:
+                logger.error(f"❌ UltraMsg erro: {response_json}")
+                return False
         else:
-            logger.error(f"❌ Erro HTTP: {response.status_code}")
+            logger.error(f"❌ Erro HTTP: {response.status_code} - {response.text}")
             return False
             
     except Exception as e:
@@ -853,7 +874,7 @@ def agent_dashboard():
 
 @app.route('/agent/conversations')
 def agent_conversations():
-    """Lista todas as conversas"""
+    """Lista conversas com números formatados"""
     if 'agent_email' not in session:
         return redirect(url_for('agent_login'))
     
@@ -861,7 +882,6 @@ def agent_conversations():
         return "MongoDB não conectado", 500
     
     try:
-        # Buscar conversas agrupadas por telefone
         pipeline = [
             {"$group": {
                 "_id": "$phone",
@@ -877,9 +897,10 @@ def agent_conversations():
         
         conversations_summary = list(conversations_collection.aggregate(pipeline))
         
-        return render_template_string(CONVERSATIONS_LIST_TEMPLATE,
+        return render_template_string(CONVERSATIONS_LIST_TEMPLATE_FIXED,
                                     agent_name=session['agent_name'],
-                                    conversations=conversations_summary)
+                                    conversations=conversations_summary,
+                                    format_phone_display=format_phone_display)
     
     except Exception as e:
         logger.error(f"❌ Erro: {str(e)}")
@@ -887,7 +908,7 @@ def agent_conversations():
 
 @app.route('/agent/conversations/<phone>')
 def agent_conversation_detail(phone):
-    """Detalhes da conversa com portal de resposta"""
+    """Detalhes com número formatado"""
     if 'agent_email' not in session:
         return redirect(url_for('agent_login'))
     
@@ -898,20 +919,48 @@ def agent_conversation_detail(phone):
         conversations = list(conversations_collection.find({"phone": phone}).sort("timestamp", 1))
         client_data = clients_collection.find_one({"phone": phone})
         
-        return render_template_string(CONVERSATION_PORTAL_TEMPLATE,
+        return render_template_string(CONVERSATION_PORTAL_TEMPLATE_FIXED,
                                     agent_name=session['agent_name'],
                                     agent_email=session['agent_email'],
                                     phone=phone,
                                     conversations=conversations,
-                                    client_data=client_data)
+                                    client_data=client_data,
+                                    format_phone_display=format_phone_display)
     
     except Exception as e:
         logger.error(f"❌ Erro: {str(e)}")
         return f"Erro: {str(e)}", 500
 
+def format_phone_display(phone):
+    """Formata número para exibição amigável"""
+    # Remover @c.us
+    clean_phone = phone.replace('@c.us', '')
+    
+    # Se tem código do país brasileiro (55)
+    if clean_phone.startswith('55') and len(clean_phone) >= 12:
+        # Formato: +55 (19) 98811-8043
+        country = clean_phone[:2]
+        area = clean_phone[2:4]
+        first = clean_phone[4:9]
+        second = clean_phone[9:]
+        return f"+{country} ({area}) {first}-{second}"
+    elif len(clean_phone) >= 10:
+        # Formato: (19) 98811-8043
+        area = clean_phone[:2] if len(clean_phone) == 10 else clean_phone[-10:-8]
+        first = clean_phone[-8:-4]
+        second = clean_phone[-4:]
+        return f"({area}) {first}-{second}"
+    else:
+        return clean_phone
+
+# FUNÇÃO PARA OBTER NÚMERO LIMPO PARA PROCESSAMENTO
+def get_clean_phone(phone):
+    """Obtém número limpo para processamento interno"""
+    return phone.replace('@c.us', '').replace('+', '').replace('-', '').replace(' ', '').replace('(', '').replace(')', '')
+
 @app.route('/agent/send-message', methods=['POST'])
 def agent_send_message():
-    """Enviar mensagem pelo portal"""
+    """Enviar mensagem pelo portal - VERSÃO CORRIGIDA"""
     if 'agent_email' not in session:
         return jsonify({"error": "Não autenticado"}), 401
     
@@ -922,6 +971,8 @@ def agent_send_message():
         if not phone or not message:
             return jsonify({"error": "Telefone e mensagem são obrigatórios"}), 400
         
+        logger.info(f"🔄 Agente {session['agent_email']} enviando mensagem para {phone}")
+        
         # Enviar mensagem via UltraMsg
         success = send_ultramsg_message(phone, message)
         
@@ -929,14 +980,18 @@ def agent_send_message():
             # Salvar no banco como resposta humana
             save_conversation_to_db(phone, "", message, 'human', session['agent_email'])
             
+            logger.info(f"✅ Mensagem enviada e salva para {phone}")
+            
             return jsonify({
                 "success": True,
-                "message": "Mensagem enviada com sucesso"
+                "message": "Mensagem enviada com sucesso",
+                "phone_display": format_phone_display(phone)
             })
         else:
+            logger.error(f"❌ Falha ao enviar mensagem para {phone}")
             return jsonify({
                 "success": False,
-                "message": "Erro ao enviar mensagem"
+                "message": "Erro ao enviar mensagem via UltraMsg"
             }), 500
     
     except Exception as e:
@@ -1056,7 +1111,256 @@ LOGIN_TEMPLATE = """
 </body>
 </html>
 """
+# TEMPLATE CORRIGIDO PARA LISTA DE CONVERSAS
+CONVERSATIONS_LIST_TEMPLATE_FIXED = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Conversas - {{ agent_name }}</title>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; background: #f5f5f5; }
+        .header { background: #007bff; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .container { padding: 20px; }
+        .conversation-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 15px; }
+        .conversation-phone { font-size: 18px; font-weight: bold; color: #007bff; margin-bottom: 10px; }
+        .btn { padding: 8px 16px; background: #007bff; color: white; text-decoration: none; border-radius: 4px; }
+        .badge { padding: 2px 8px; border-radius: 12px; font-size: 11px; color: white; margin-left: 10px; }
+        .badge-danger { background: #dc3545; }
+        .badge-success { background: #28a745; }
+        .badge-info { background: #17a2b8; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>💬 Todas as Conversas</h1>
+        <div>
+            <a href="/agent/dashboard" class="btn">⬅ Dashboard</a>
+            <a href="/agent/logout" class="btn">🚪 Sair</a>
+        </div>
+    </div>
+    
+    <div class="container">
+        {% for conv in conversations %}
+        <div class="conversation-card">
+            <div class="conversation-phone">
+                📱 {{ format_phone_display(conv._id) }}
+                {% if conv.needs_human %}
+                    <span class="badge badge-danger">PRECISA HUMANO</span>
+                {% endif %}
+                {% if conv.has_human_response %}
+                    <span class="badge badge-success">COM RESPOSTA HUMANA</span>
+                {% else %}
+                    <span class="badge badge-info">APENAS BOT</span>
+                {% endif %}
+            </div>
+            <div style="margin-bottom: 15px; color: #666;">
+                <strong>Última mensagem:</strong> "{{ conv.last_message[:150] }}..."<br>
+                <strong>Última atividade:</strong> {{ conv.last_timestamp.strftime('%d/%m/%Y %H:%M') }}
+            </div>
+            <div>
+                <a href="/agent/conversations/{{ conv._id }}" class="btn">👀 Ver Conversa</a>
+                {% if conv.needs_human %}
+                    <a href="/agent/conversations/{{ conv._id }}" class="btn" style="background: #dc3545;">🚨 Responder</a>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</body>
+</html>
+"""
 
+# TEMPLATE CORRIGIDO PARA PORTAL DE RESPOSTA
+CONVERSATION_PORTAL_TEMPLATE_FIXED = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Portal - {{ format_phone_display(phone) }}</title>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; background: #f5f5f5; }
+        .header { background: #007bff; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .container { padding: 20px; display: grid; grid-template-columns: 1fr 350px; gap: 20px; }
+        .conversation-panel { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; flex-direction: column; height: 600px; }
+        .conversation-messages { flex: 1; padding: 20px; overflow-y: auto; }
+        .conversation-input { padding: 20px; border-top: 1px solid #eee; }
+        .message { margin-bottom: 15px; padding: 15px; border-radius: 8px; }
+        .message-user { background: #e3f2fd; border-left: 4px solid #2196f3; }
+        .message-bot { background: #f1f8e9; border-left: 4px solid #4caf50; }
+        .message-human { background: #fff3e0; border-left: 4px solid #ff9800; }
+        .btn { padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; }
+        .btn-success { background: #28a745; }
+        .btn-danger { background: #dc3545; }
+        .form-control { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        .textarea { min-height: 80px; resize: vertical; }
+        .alert { padding: 10px; border-radius: 4px; margin-bottom: 15px; }
+        .alert-success { background: #d4edda; color: #155724; }
+        .alert-danger { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>💬 Portal: {{ format_phone_display(phone) }}</h1>
+        <div>
+            <a href="/agent/conversations" class="btn">⬅ Voltar</a>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="conversation-panel">
+            <div style="padding: 20px; border-bottom: 1px solid #eee;">
+                <h3>📱 Conversa com {{ format_phone_display(phone) }}</h3>
+                <div id="alerts"></div>
+            </div>
+            
+            <div class="conversation-messages" id="messages">
+                {% for conv in conversations %}
+                <div class="message {% if conv.message_type == 'human' %}message-human{% elif conv.message_type == 'bot' %}message-bot{% else %}message-user{% endif %}">
+                    <div style="font-weight: bold; margin-bottom: 8px;">
+                        {% if conv.message_type == 'human' %}
+                            👨‍💼 {{ conv.agent_email or 'Agente' }}
+                        {% elif conv.message_type == 'bot' %}
+                            🤖 Bot
+                        {% else %}
+                            👤 Cliente
+                        {% endif %}
+                        <span style="font-size: 12px; color: #666; margin-left: 10px;">{{ conv.timestamp.strftime('%d/%m %H:%M') }}</span>
+                    </div>
+                    <div style="line-height: 1.4;">
+                        {% if conv.message_type == 'human' or conv.message_type == 'bot' %}
+                            {{ (conv.response or conv.message) | replace('\n', '<br>') | safe }}
+                        {% else %}
+                            {{ conv.message | replace('\n', '<br>') | safe }}
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            
+            <div class="conversation-input">
+                <form id="messageForm">
+                    <div style="margin-bottom: 10px;">
+                        <textarea name="message" class="form-control textarea" placeholder="Digite sua resposta..." required></textarea>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button type="submit" class="btn btn-success">📤 Enviar</button>
+                        <button type="button" class="btn btn-danger" onclick="completeQuotation()">✅ Finalizar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <h3>📋 Dados do Cliente</h3>
+            {% if client_data and client_data.data %}
+            {% for key, value in client_data.data.items() %}
+            <div style="margin-bottom: 10px;">
+                <strong>{{ key.replace('_', ' ').title() }}:</strong><br>
+                <span style="color: #666;">{{ value }}</span>
+            </div>
+            {% endfor %}
+            {% else %}
+            <p>Nenhum dado coletado ainda.</p>
+            {% endif %}
+            
+            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
+                <h4>⚡ Mensagens Rápidas</h4>
+                <button class="btn" style="margin: 2px; font-size: 12px;" onclick="sendQuick('Ola! Sou especialista da Equinos Seguros.')">👋 Saudação</button><br>
+                <button class="btn" style="margin: 2px; font-size: 12px;" onclick="sendQuick('Preciso de mais informacoes para sua cotacao.')">📋 Solicitar</button><br>
+                <button class="btn" style="margin: 2px; font-size: 12px;" onclick="sendQuick('Sua cotacao esta sendo processada!')">⏳ Processando</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const phone = '{{ phone }}';
+        
+        document.getElementById('messageForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            formData.append('phone', phone);
+            formData.append('message', this.message.value);
+            
+            showAlert('Enviando mensagem...', 'info');
+            
+            fetch('/agent/send-message', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('✅ Mensagem enviada!', 'success');
+                    this.message.value = '';
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showAlert('❌ Erro: ' + data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                showAlert('❌ Erro de conexão: ' + error, 'danger');
+            });
+        });
+        
+        function sendQuick(message) {
+            const formData = new FormData();
+            formData.append('phone', phone);
+            formData.append('message', message);
+            
+            showAlert('Enviando...', 'info');
+            
+            fetch('/agent/send-message', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('✅ Enviado!', 'success');
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showAlert('❌ Erro: ' + data.message, 'danger');
+                }
+            });
+        }
+        
+        function completeQuotation() {
+            if (confirm('Finalizar cotação para este cliente?')) {
+                const formData = new FormData();
+                formData.append('phone', phone);
+                
+                fetch('/agent/complete-quotation', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showAlert('✅ Cotação finalizada!', 'success');
+                        setTimeout(() => location.reload(), 1500);
+                    } else {
+                        showAlert('❌ Erro: ' + data.message, 'danger');
+                    }
+                });
+            }
+        }
+        
+        function showAlert(message, type) {
+            const alertsDiv = document.getElementById('alerts');
+            const alertClass = type === 'success' ? 'alert-success' : type === 'danger' ? 'alert-danger' : 'alert-info';
+            alertsDiv.innerHTML = `<div class="alert ${alertClass}">${message}</div>`;
+            setTimeout(() => alertsDiv.innerHTML = '', 4000);
+        }
+        
+        // Auto-scroll
+        const messagesDiv = document.getElementById('messages');
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    </script>
+</body>
+</html>
+"""
 # Inicializar MongoDB ao iniciar
 logger.info("🚀 Iniciando aplicação portal completo...")
 init_mongodb()

@@ -846,11 +846,6 @@ LOGIN_TEMPLATE = """
         {% if error %}
         <div class="error">{{ error }}</div>
         {% endif %}
-        
-        <div class="info">
-            <strong>Agentes Configurados:</strong>
-            {{ agents_list }}
-        </div>
     </div>
 </body>
 </html>

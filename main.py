@@ -80,14 +80,14 @@ REQUIRED_FIELDS = {
 # Agentes padrão
 DEFAULT_AGENTS = [
     {
-        'email': 'agent1@equinos.com',
+        'email': 'agent1@equinosseguros.com',
         'name': 'Agente 1',
         'password': 'agent123',
         'role': 'agent',
         'active': True
     },
     {
-        'email': 'agent2@equinos.com', 
+        'email': 'agent2@equinosseguros.com', 
         'name': 'Agente 2',
         'password': 'agent123',
         'role': 'agent',
@@ -621,13 +621,6 @@ LOGIN_TEMPLATE = """
         {% if error %}
         <div class="error">{{ error }}</div>
         {% endif %}
-        
-        <div class="agents-list">
-            <strong>Agentes de Teste:</strong><br>
-            • AGENT_agent1_EMAIL / agent123<br>
-            • AGENT_agent2_EMAIL / agent123<br>
-            • admin@equinosseguros.com / admin123
-        </div>
     </div>
 </body>
 </html>

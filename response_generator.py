@@ -6,7 +6,7 @@ Gerador de Respostas Contextuais para Bot de Cotação de Seguros
 import os
 import json
 import re
-import openai
+from openai import OpenAI
 import logging
 from typing import Dict, List, Tuple
 from datetime import datetime
@@ -18,7 +18,7 @@ class ResponseGenerator:
     
     def __init__(self):
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
-        openai.api_key = self.openai_api_key
+        self.client = OpenAI(api_key=self.openai_api_key)
         
         # Templates de mensagens
         self.templates = {
@@ -86,7 +86,7 @@ Estou aqui para ajudar! 🤝"""
             if existing_data:
                 existing_context = f"\\nDados já coletados: {json.dumps(existing_data, ensure_ascii=False)}"
             
-            response = openai.chat.completions.create(
+            response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {

@@ -6,7 +6,7 @@ Processador de áudio para transcrição e geração
 import os
 import logging
 import requests
-import openai
+from openai import OpenAI
 from typing import Optional
 from gtts import gTTS
 import tempfile
@@ -24,7 +24,7 @@ class AudioProcessor:
         self.tts_language = os.getenv('TTS_LANGUAGE', 'pt-BR')
         
         if self.openai_api_key:
-            openai.api_key = self.openai_api_key
+            self.client = OpenAI(api_key=self.openai_api_key)
         else:
             logger.warning("OPENAI_API_KEY não configurado - transcrição desabilitada")
     
@@ -50,7 +50,7 @@ class AudioProcessor:
             
             # Transcrever usando Whisper
             with open(audio_file, 'rb') as f:
-                transcript = openai.audio.transcriptions.create(
+                transcript = self.client.audio.transcriptions.create(
                     model="whisper-1",
                     file=f,
                     language="pt"
@@ -172,7 +172,7 @@ class AudioProcessor:
                 return filename
             
             # Gerar áudio com OpenAI
-            response = openai.audio.speech.create(
+            response = self.client.audio.speech.create(
                 model="tts-1",
                 voice="alloy",  # Voz mais neutra
                 input=text

@@ -157,7 +157,7 @@ class MessageHandler:
                 Explique que precisa das seguintes informações obrigatórias:
                 - Nome do Animal
                 - Valor do Animal
-                - Número de Registro ou Passaporte (se tiver)
+                - Número de Registro
                 - Raça
                 - Data de Nascimento
                 - Sexo (inteiro, castrado ou fêmea)

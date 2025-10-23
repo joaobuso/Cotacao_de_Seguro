@@ -439,7 +439,6 @@ def extract_animal_data_improved(message, existing_data=None):
         ],
         'registro': [
             r'registro[:\s]*([a-z0-9\-]+)',
-            r'passaporte[:\s]*([a-z0-9\-]+)',
             r'numero[:\s]*([a-z0-9\-]+)',
             r'([0-9]{4,8})'
         ],
@@ -549,7 +548,7 @@ do seu animal que ja vamos organizando tudo! 😊"""
         required_fields = {
             'nome_animal': 'Nome do Animal',
             'valor_animal': 'Valor do Animal (R$)',
-            'registro': 'Numero de Registro ou Passaporte',
+            'registro': 'Numero de Registro',
             'raca': 'Raca',
             'data_nascimento': 'Data de Nascimento',
             'sexo': 'Sexo (inteiro, castrado ou femea)',
@@ -628,7 +627,7 @@ Sou seu assistente virtual para cotacao de seguros equinos.
 📋 *DADOS NECESSARIOS:*
 • Nome do Animal
 • Valor do Animal (R$) - ex: 50000 ou 50.000,00
-• Numero de Registro ou Passaporte
+• Numero de Registro
 • Raca - ex: Quarto de Milha, Mangalarga
 • Data de Nascimento - formato: DD/MM/AAAA
 • Sexo - inteiro, castrado ou femea

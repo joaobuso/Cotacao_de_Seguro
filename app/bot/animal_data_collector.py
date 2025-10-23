@@ -20,7 +20,7 @@ class AnimalDataCollector:
     REQUIRED_FIELDS = {
         'nome_animal': 'Nome do Animal',
         'valor_animal': 'Valor do Animal',
-        'registro_passaporte': 'Número de Registro/Passaporte',
+        'registro': 'Número de Registro',
         'raca': 'Raça',
         'data_nascimento': 'Data de Nascimento',
         'sexo': 'Sexo',
@@ -91,10 +91,9 @@ class AnimalDataCollector:
                 except ValueError:
                     continue
         
-        # Extrair registro/passaporte
+        # Extrair registro
         registro_patterns = [
             r'registro.*?(?:é|:)?\s*([a-z0-9\-]+)',
-            r'passaporte.*?(?:é|:)?\s*([a-z0-9\-]+)',
             r'número.*?(?:é|:)?\s*([a-z0-9\-]+)'
         ]
         
@@ -103,8 +102,8 @@ class AnimalDataCollector:
             if match:
                 registro = match.group(1).strip().upper()
                 if len(registro) > 2:
-                    self.data['registro_passaporte'] = registro
-                    updated_fields.append('registro_passaporte')
+                    self.data['registro'] = registro
+                    updated_fields.append('registro')
                     break
         
         # Extrair raça
@@ -248,7 +247,7 @@ class AnimalDataCollector:
         return {
             'nome_animal': self.data.get('nome_animal', ''),
             'valor_animal': self.data.get('valor_animal', ''),
-            'registro_passaporte': self.data.get('registro_passaporte', ''),
+            'registro': self.data.get('registro', ''),
             'raca': self.data.get('raca', ''),
             'data_nascimento': self.data.get('data_nascimento', ''),
             'sexo': self.data.get('sexo', ''),

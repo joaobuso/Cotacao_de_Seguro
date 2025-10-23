@@ -67,7 +67,7 @@ class DatabaseManager:
         required_fields = {
             'nome_animal': 'Nome do Animal',
             'valor_animal': 'Valor do Animal (R$)',
-            'registro': 'Número de Registro ou Passaporte',
+            'registro': 'Número de Registro',
             'raca': 'Raça',
             'data_nascimento': 'Data de Nascimento',
             'sexo': 'Sexo (inteiro, castrado ou fêmea)',

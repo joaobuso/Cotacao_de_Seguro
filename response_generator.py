@@ -31,7 +31,7 @@ Para gerar sua cotação, preciso de algumas informações sobre seu animal:
 📋 *DADOS NECESSÁRIOS:*
 • Nome do Animal
 • Valor do Animal (R$)
-• Número de Registro ou Passaporte
+• Número de Registro
 • Raça
 • Data de Nascimento
 • Sexo (inteiro, castrado ou fêmea)
@@ -98,7 +98,7 @@ Estou aqui para ajudar! 🤝"""
                         Campos possíveis:
                         - nome_animal: Nome do animal
                         - valor_animal: Valor em reais (apenas números, sem R$ ou pontos)
-                        - registro: Número de registro ou passaporte
+                        - registro: Número de registro
                         - raca: Raça do animal
                         - data_nascimento: Data no formato DD/MM/AAAA
                         - sexo: inteiro, castrado ou fêmea
@@ -178,7 +178,7 @@ Estou aqui para ajudar! 🤝"""
             required_fields = {
                 'nome_animal': 'Nome do Animal',
                 'valor_animal': 'Valor do Animal (R$)',
-                'registro': 'Número de Registro ou Passaporte',
+                'registro': 'Número de Registro',
                 'raca': 'Raça',
                 'data_nascimento': 'Data de Nascimento',
                 'sexo': 'Sexo (inteiro, castrado ou fêmea)',

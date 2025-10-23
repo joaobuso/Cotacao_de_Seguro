@@ -576,6 +576,7 @@ do seu animal que ja vamos organizando tudo! 😊"""
         # Se todos os campos estão completos, chamar automação SwissRe
         if all_fields_complete and status == 'completed':
             logger.info(f"🎯 Todos os dados completos para {phone} - Iniciando automação SwissRe")
+            logger.info(f'Dados: {updated_data}')
             
             # Chamar automação SwissRe
             swissre_result = call_swissre_automation(updated_data)

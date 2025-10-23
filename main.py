@@ -367,6 +367,8 @@ def call_swissre_automation(client_data):
         
         # Chamar função de automação
         result = generate_quotation_pdf(client_data)
+
+        logger.info(f'Resultado Consulta: {result}')
         
         if result and result.get('success'):
             logger.info("✅ Cotação SwissRe gerada com sucesso")

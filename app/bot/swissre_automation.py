@@ -128,21 +128,7 @@ def extrair_dados_chatgpt(prompt: str, max_tentativas: int = 6, delay_retry: int
                 return False
 
 def generate_quotation_pdf(client_data):
-  logger.info("Incicio Fluxo de Cotação SwissRe")
-  client_data = """
-  Nome do Animal: Mancha
-  Valor do Animal: 50.000,00
-  Numero de Registro: 12345
-  Raca: Mangalarga
-  Data de Nascimento - 19/06/1985
-  Sexo - inteiro
-  Utilizacao - lazer
-  Endereco: Rua Braulio Mendes Nogueira, 200 Bairro Chacara Recanto Colina Verde
-  Cidade: Campinas
-  CEP: 13058-831
-  Estado SP
-  Nome do responsável: Nelson Luiz do Rego Neto
-  CPF: 07963557000258"""
+  logger.info("Inicio Fluxo de Cotação SwissRe")
 
   prompt = f"""
   Nome:
@@ -332,7 +318,9 @@ def generate_quotation_pdf(client_data):
         # Salvar o PDF em disco
         with open(path_file, "wb") as f:
             f.write(response_doc.content)
-        logger.info("Documento salvo como documento.pdf")
+
+        logger.info(f"Documento salvo em: {path_file}")
+
         return {
             'success': True,
             'pdf_url': 'pdf_url',

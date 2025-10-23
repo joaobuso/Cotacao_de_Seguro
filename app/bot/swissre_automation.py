@@ -31,8 +31,7 @@ API_URL = "https://corsobr.api.swissre.com/issuance/v1/CreateQuotation"
 API_URL_DOCUMENT = 'https://corsobr.api.swissre.com/document/v1/PrintDocument'
 
 
-# Inicializa cliente da OpenAI
-client = OpenAI(api_key=OPENAI_API_KEY)
+
 
 def normalizar_retorno_json(dados):
     """
@@ -72,7 +71,8 @@ def extrair_dados_chatgpt(prompt: str, max_tentativas: int = 6, delay_retry: int
         "nome",
         "cpf"
     ]
-
+    # Inicializa cliente da OpenAI
+    client = OpenAI(api_key=OPENAI_API_KEY)
     for tentativa in range(1, max_tentativas + 1):
         try:
             response = client.chat.completions.create(

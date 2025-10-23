@@ -128,6 +128,7 @@ def extrair_dados_chatgpt(prompt: str, max_tentativas: int = 6, delay_retry: int
                 return False
 
 def generate_quotation_pdf(client_data):
+  logger.info("Incicio Fluxo de Cotação SwissRe")
   client_data = """
   Nome do Animal: Mancha
   Valor do Animal: 50.000,00
@@ -285,7 +286,7 @@ def generate_quotation_pdf(client_data):
         }
       ]
     }
-
+    logger.info("Capturar Token")
     # 1. Obter token
     data = {
         "grant_type": "client_credentials",
@@ -303,6 +304,7 @@ def generate_quotation_pdf(client_data):
     }
 
     # 4. Enviar requisição de cotação
+    logger.info("Envio requisição para formalizar cotacao")
     quotation_response = requests.post(API_URL, headers=headers, json=payload)
 
     dados = quotation_response.json()
@@ -320,6 +322,7 @@ def generate_quotation_pdf(client_data):
         "proposalNumber": ""
     }
 
+    logger.info(f"Cotacao gerada {contractNumber}")
     response_doc = requests.post(API_URL_DOCUMENT, headers=headers, json=payload_doc)
 
     logger.info("Status Code:", response_doc.status_code)

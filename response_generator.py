@@ -99,32 +99,50 @@ Estou aqui para ajudar! 🤝"""
                     {
                         "role": "system",
                         "content": f"""
-                        [Versão: BotEquinosSeguros v1.0]
                         Você é um assistente educado, amigável e objetivo.
                         Tem a função de coletar dados para seguros de equinos.
                         Explique claramente se precisar pedir informações adicionais.
                         Jamais invente dados.
-                        Você deve indicar claramente se ainda faltam dados obrigatórios.
-                        Se faltar, peça de forma educada e objetiva.
-                        A cotação só será iniciada pelo sistema quando todos os dados forem coletados.
-                        
-                        Dados obrigatorios:
-                        - nome: Nome do Solicitante
-                        - cpf: CPF do Solicitante
-                        - nome_animal: Nome do animal
-                        - valor_animal: Valor em reais (apenas números, sem R$ ou pontos)
-                        - raca: Raça do animal
-                        - data_nascimento: Data no formato DD/MM/AAAA
-                        - sexo: inteiro, castrado ou fêmea
-                        - utilizacao: Como o animal é usado (lazer, salto, etc.)
-                        - rua:
-                        - numero:
-                        - bairro:
-                        - cidade:
-                        - estado:
-                        - cep:
-                        
-                        {existing_context}
+                        Se não encontrar alguma informação obrigatória, deixe o campo vazio.
+
+                        Campos obrigatórios:
+                        - nome_solicitante
+                        - cpf_solicitante
+                        - nome_animal
+                        - valor_animal
+                        - raca
+                        - data_nascimento
+                        - sexo
+                        - utilizacao
+                        - rua
+                        - numero
+                        - bairro
+                        - cidade
+                        - estado
+                        - cep
+
+                        No retorno, além dos dados acima, inclua também:
+                        "dados_completos": true  → se todos os campos estiverem preenchidos  
+                        "dados_completos": false → se faltar pelo menos um campo
+
+                        Responda APENAS com um JSON válido. Exemplo:
+                        {
+                        "nome_solicitante": "João",
+                        "cpf_solicitante": "12345678900",
+                        "nome_animal": "Mancha",
+                        "valor_animal": "10000",
+                        "raca": "Mangalarga",
+                        "data_nascimento": "21/04/2023",
+                        "sexo": "inteiro",
+                        "utilizacao": "lazer",
+                        "rua": "Rua Exemplo",
+                        "numero": "123",
+                        "bairro": "Centro",
+                        "cidade": "Campinas",
+                        "estado": "SP",
+                        "cep": "13058000",
+                        "dados_completos": true
+                        }
 
                         """
                     },
@@ -142,13 +160,13 @@ Estou aqui para ajudar! 🤝"""
             if json_match:
                 json_str = json_match.group()
                 extracted_data = json.loads(json_str)
-                
-                # Mesclar com dados existentes
-                if existing_data:
+                if extracted_data.get("dados_completos") is True:
+                    logger.info("✅ Todos os dados obrigatórios foram informados pelo usuário.")
                     result = existing_data.copy()
                     result.update(extracted_data)
                     return result
                 else:
+                    logger.info("⚠️ Ainda faltam dados obrigatórios.")
                     return extracted_data
             else:
                 return existing_data or {}
@@ -208,16 +226,15 @@ Estou aqui para ajudar! 🤝"""
             collected_fields = []
             missing_fields = []
             
-            for field_key, field_name in required_fields.items():
-                if field_key in updated_data and updated_data[field_key]:
-                    collected_fields.append(f"✅ {field_name}: {updated_data[field_key]}")
-                else:
-                    missing_fields.append(f"❌ {field_name}")
+            # Normaliza campos (remove espaços, converte tudo para string)
+            updated_data = {k: str(v).strip() if v else "" for k, v in updated_data.items()}
+
+            missing_fields = [field for field in required_fields if not updated_data.get(field)]
             
             # Gerar resposta baseada no estado
-            if len(missing_fields) == 0:
-                # Todos os dados coletados
-                complete_data = "\\n".join(collected_fields)
+            # Se IA já informou que está tudo completo
+            if updated_data.get("dados_completos") is True:
+                complete_data = "\n".join(collected_fields)
                 return self.templates['complete_data'].format(complete_data=complete_data)
             
             elif len(collected_fields) > 0:

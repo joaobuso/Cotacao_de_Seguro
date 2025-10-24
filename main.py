@@ -491,18 +491,24 @@ def extract_animal_data_improved(message, existing_data=None):
     
     return data
 
-def check_all_required_fields(data):
-    """Verifica se todos os campos obrigatórios estão preenchidos"""
-    required_fields = [
-        'nome_animal', 'valor_animal', 'registro', 'raca',
-        'data_nascimento', 'sexo', 'utilizacao', 'endereco'
+def check_all_required_fields(data: dict) -> bool:
+    required = [
+        "nome_solicitante",
+        "cpf_solicitante",
+        "nome_animal",
+        "valor_animal",
+        "raca",
+        "data_nascimento",
+        "sexo",
+        "utilizacao",
+        "rua",
+        "numero",
+        "bairro",
+        "cidade",
+        "estado",
+        "cep"
     ]
-    
-    for field in required_fields:
-        if field not in data or not data[field]:
-            return False
-    
-    return True
+    return all(str(data.get(f, "")).strip() for f in required)
 
 def check_human_request(message):
     """Verifica se cliente quer falar com humano"""
@@ -529,6 +535,7 @@ def generate_bot_response(phone, message):
 
         # 💾 Salvar dados atualizados no banco
         status = 'completed' if check_all_required_fields(updated_data) else 'collecting'
+        logger.info(f"📊 STATUS para {phone}: {status} — Campos: {updated_data}")
         save_client_data_to_db(phone, updated_data, status)
 
         # 📝 Gerar resposta contextual automática

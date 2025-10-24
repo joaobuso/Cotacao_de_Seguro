@@ -17,7 +17,11 @@ class DatabaseManager:
     def __init__(self):
         self.clients = {}
         self.conversations = {}
-        
+
+    def reset_client(self, phone: str):
+        self.clients.pop(phone, None)
+        self.conversations.pop(phone, None)
+
     def save_client_data(self, phone: str, data: Dict) -> bool:
         """Salva dados do cliente"""
         try:

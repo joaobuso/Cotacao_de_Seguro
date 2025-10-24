@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 import hashlib
 from templates_portal import *
 from response_generator import response_generator
+from database_manager import db_manager
 
 # Carregar variáveis de ambiente
 load_dotenv()
@@ -44,6 +45,11 @@ conversations_collection = None
 clients_collection = None
 agents_collection = None
 quotations_collection = None
+
+@app.get("/reset-client/<phone>")
+def reset_client_endpoint(phone):
+    db_manager.reset_client(phone)
+    return {"status": "ok", "message": f"Cliente {phone} resetado com sucesso."}
 
 def gerar_cotacao_id():
     return f"{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"

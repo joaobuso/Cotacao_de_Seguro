@@ -526,7 +526,7 @@ def check_all_required_fields(data: dict) -> bool:
         "numero",
         "bairro",
         "cidade",
-        "estado",
+        "uf",
         "cep"
     ]
     return all(str(data.get(f, "")).strip() for f in required)

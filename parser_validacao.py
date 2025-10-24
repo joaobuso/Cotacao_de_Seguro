@@ -6,7 +6,7 @@ OBRIGATORIOS = ["cep","rua","numero","bairro","uf","cidade","valor","nome","cpf"
 MAPA_CAMPOS = {
     "nome_solicitante":"nome",
     "cpf_solicitante":"cpf",
-    "estado":"uf",
+    "uf":"uf",
     "endereco":"rua",  # se vier rua completa
 }
 

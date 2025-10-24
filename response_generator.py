@@ -43,7 +43,7 @@ Para gerar sua cotação, preciso de algumas informações sobre seu animal:
 • Número
 • Bairro
 • Cidade
-• Estado
+• uf
 • Cep
                         
 Você pode enviar todas as informações de uma vez ou ir enviando aos poucos. Vou te ajudar a organizar tudo! 😊
@@ -114,7 +114,7 @@ Estou aqui para ajudar! 🤝"""
             - numero
             - bairro
             - cidade
-            - estado
+            - uf
             - cep
 
             No retorno, além dos dados acima, inclua também:
@@ -135,7 +135,7 @@ Estou aqui para ajudar! 🤝"""
             "numero": "123",
             "bairro": "Centro",
             "cidade": "Campinas",
-            "estado": "SP",
+            "uf": "SP",
             "cep": "13058000",
             "dados_completos": true
             }
@@ -217,7 +217,7 @@ Estou aqui para ajudar! 🤝"""
                 # liste apenas os que faltam, com rótulos amigáveis
                 obrigatorios_pt = {
                 "nome":"Nome Solicitante","cpf":"CPF Solicitante","valor":"Valor do Animal (R$)",
-                "rua":"Rua","numero":"Número","bairro":"Bairro","cidade":"Cidade","uf":"Estado","cep":"CEP"
+                "rua":"Rua","numero":"Número","bairro":"Bairro","cidade":"Cidade","uf":"uf","cep":"CEP"
                 }
                 _, faltantes = normaliza_e_valida(updated_data)
                 missing = "\n".join(f"❌ {obrigatorios_pt[c]}" for c in faltantes)

@@ -150,7 +150,7 @@ def generate_quotation_pdf(client_data):
   cpf = CPF do solicitante contendo apenas numeros
 
   Regras
-  - Caso o CEP esteja presente e o endereço esteja faltando, utilize o CEP para preencher automaticamente o endereço completo (logradouro, bairro, cidade, estado).
+  - Caso o CEP esteja presente e o endereço esteja faltando, utilize o CEP para preencher automaticamente o endereço completo (logradouro, bairro, cidade, uf).
   - Se algum campo não for encontrado e não puder ser deduzido, deixe vazio.
 
   Texto: {client_data}

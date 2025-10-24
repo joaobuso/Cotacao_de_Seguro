@@ -569,6 +569,9 @@ def generate_bot_response(phone, message):
         # 💾 Salvar dados
         save_client_data_to_db(phone, updated_data, status)
 
+        status = 'completed' if check_all_required_fields(updated_data) else 'collecting'
+        logger.info(f'Status: {status}')
+
         # 📝 Gerar resposta
         bot_response = response_generator.generate_response(phone, message, {'data': updated_data}, conversation_count)
 

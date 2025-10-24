@@ -452,7 +452,7 @@ def extract_animal_data_improved(message, existing_data=None):
             r'([0-9]{1,2}[/\-][0-9]{1,2}[/\-][0-9]{4})',
             r'([0-9]{1,2}[/\-][0-9]{1,2}[/\-][0-9]{2})'
         ],
-        'endereco_cocheira': [
+        'endereco': [
             r'endereco[:\s]*([^,\n]+)',
             r'cocheira[:\s]*([^,\n]+)',
             r'cep[:\s]*([0-9\-\s]+)',
@@ -481,7 +481,7 @@ def extract_animal_data_improved(message, existing_data=None):
                     elif field == 'data_nascimento':
                         if re.match(r'[0-9]{1,2}[/\-][0-9]{1,2}[/\-][0-9]{2,4}', value):
                             data[field] = value
-                    elif field == 'endereco_cocheira':
+                    elif field == 'endereco':
                         if len(value) >= 5:
                             data[field] = value
                     else:
@@ -495,7 +495,7 @@ def check_all_required_fields(data):
     """Verifica se todos os campos obrigatórios estão preenchidos"""
     required_fields = [
         'nome_animal', 'valor_animal', 'registro', 'raca',
-        'data_nascimento', 'sexo', 'utilizacao', 'endereco_cocheira'
+        'data_nascimento', 'sexo', 'utilizacao', 'endereco'
     ]
     
     for field in required_fields:

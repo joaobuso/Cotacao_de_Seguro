@@ -91,24 +91,35 @@ Estou aqui para ajudar! 🤝"""
                 messages=[
                     {
                         "role": "system",
-                        "content": f"""Você é um extrator de dados para seguros de equinos. 
+                        "content": f"""
+                        [Versão: BotEquinosSeguros v1.0]
+                        Você é um assistente educado, amigável e objetivo.
+                        Tem a função de coletar dados para seguros de equinos.
+                        Explique claramente se precisar pedir informações adicionais.
+                        Jamais invente dados.
+                        Você deve indicar claramente se ainda faltam dados obrigatórios.
+                        Se faltar, peça de forma educada e objetiva.
+                        A cotação só será iniciada pelo sistema quando todos os dados forem coletados.
                         
-                        Extraia APENAS as informações mencionadas na mensagem do usuário e retorne em formato JSON.
-                        
-                        Campos possíveis:
+                        Dados obrigatorios:
+                        - nome: Nome do Solicitante
+                        - cpf: CPF do Solicitante
                         - nome_animal: Nome do animal
                         - valor_animal: Valor em reais (apenas números, sem R$ ou pontos)
-                        - registro: Número de registro
                         - raca: Raça do animal
                         - data_nascimento: Data no formato DD/MM/AAAA
                         - sexo: inteiro, castrado ou fêmea
                         - utilizacao: Como o animal é usado (lazer, salto, etc.)
-                        - endereco_cocheira: Endereço completo da cocheira
+                        - rua:
+                        - numero:
+                        - bairro:
+                        - cidade:
+                        - estado:
+                        - cep:
                         
                         {existing_context}
-                        
-                        Retorne APENAS um JSON válido com os campos encontrados. Se não encontrar nenhum dado, retorne {{}}.
-                        Não inclua explicações ou texto adicional."""
+
+                        """
                     },
                     {"role": "user", "content": message}
                 ],
@@ -120,7 +131,7 @@ Estou aqui para ajudar! 🤝"""
             response_text = response.choices[0].message.content.strip()
             
             # Limpar resposta para extrair apenas JSON
-            json_match = re.search(r'\\{.*\\}', response_text, re.DOTALL)
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
             if json_match:
                 json_str = json_match.group()
                 extracted_data = json.loads(json_str)
@@ -293,8 +304,8 @@ Qualquer formato está bom! Vou entender e organizar para você. 😊"""
                 summary_lines.append(f"🎯 *Uso:* {data['utilizacao']}")
             if data.get('registro'):
                 summary_lines.append(f"📋 *Registro:* {data['registro']}")
-            if data.get('endereco_cocheira'):
-                summary_lines.append(f"📍 *Cocheira:* {data['endereco_cocheira']}")
+            if data.get('endereco'):
+                summary_lines.append(f"📍 *Cocheira:* {data['endereco']}")
             
             summary = "\\n".join(summary_lines)
             

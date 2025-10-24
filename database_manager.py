@@ -39,7 +39,7 @@ class DatabaseManager:
             # Verificar se todos os campos obrigatórios foram preenchidos
             required_fields = [
                 'nome_animal', 'valor_animal', 'registro', 'raca',
-                'data_nascimento', 'sexo', 'utilizacao', 'endereco_cocheira'
+                'data_nascimento', 'sexo', 'utilizacao', 'endereco'
             ]
             
             completed_fields = sum(1 for field in required_fields 
@@ -72,7 +72,7 @@ class DatabaseManager:
             'data_nascimento': 'Data de Nascimento',
             'sexo': 'Sexo (inteiro, castrado ou fêmea)',
             'utilizacao': 'Utilização (lazer, salto, laço, etc.)',
-            'endereco_cocheira': 'Endereço da Cocheira (CEP e cidade)'
+            'endereco': 'Endereço (CEP e cidade)'
         }
         
         client = self.clients.get(phone, {})

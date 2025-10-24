@@ -29,6 +29,8 @@ Sou seu assistente virtual e vou te ajudar a fazer a cotação do seguro do seu 
 Para gerar sua cotação, preciso de algumas informações sobre seu animal:
 
 📋 *DADOS NECESSÁRIOS:*
+• Nome Solicitante
+• CPF Solicitante
 • Nome do Animal
 • Valor do Animal (R$)
 • Número de Registro
@@ -36,8 +38,13 @@ Para gerar sua cotação, preciso de algumas informações sobre seu animal:
 • Data de Nascimento
 • Sexo (inteiro, castrado ou fêmea)
 • Utilização (lazer, salto, laço, etc.)
-• Endereço da Cocheira (CEP e cidade)
-
+• Rua
+• Número
+• Bairro
+• Cidade
+• Estado
+• Cep
+                        
 Você pode enviar todas as informações de uma vez ou ir enviando aos poucos. Vou te ajudar a organizar tudo! 😊
 
 *Como prefere começar?*""",

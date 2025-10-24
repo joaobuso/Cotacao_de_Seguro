@@ -91,7 +91,7 @@ Estou aqui para ajudar! 🤝"""
             # Dados existentes para contexto
             existing_context = ""
             if existing_data:
-                existing_context = f"\\nDados já coletados: {json.dumps(existing_data, ensure_ascii=False)}"
+                existing_context = "\nDados já coletados: " + repr(json.dumps(existing_data, ensure_ascii=False))
             
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
@@ -143,7 +143,7 @@ Estou aqui para ajudar! 🤝"""
                         "cep": "13058000",
                         "dados_completos": true
                         }
-
+                        {existing_context}
                         """
                     },
                     {"role": "user", "content": message}

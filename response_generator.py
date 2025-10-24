@@ -10,6 +10,7 @@ from openai import OpenAI
 import logging
 from typing import Dict, List, Tuple
 from datetime import datetime
+from parser_validacao import normaliza_e_valida
 
 logger = logging.getLogger(__name__)
 
@@ -91,65 +92,63 @@ Estou aqui para ajudar! 🤝"""
             # Dados existentes para contexto
             existing_context = ""
             if existing_data:
-                existing_context = "\nDados já coletados: " + repr(json.dumps(existing_data, ensure_ascii=False))
+                existing_context = "\nDados já coletados: " + json.dumps(existing_data, ensure_ascii=False)
+
+            system_text = """
+            Você é um assistente educado, amigável e objetivo.
+            Tem a função de coletar dados para seguros de equinos.
+            Explique claramente se precisar pedir informações adicionais.
+            Jamais invente dados.
+            Se não encontrar alguma informação obrigatória, deixe o campo vazio.
+
+            Campos obrigatórios:
+            - nome_solicitante
+            - cpf_solicitante
+            - nome_animal
+            - valor_animal
+            - raca
+            - data_nascimento
+            - sexo
+            - utilizacao
+            - rua
+            - numero
+            - bairro
+            - cidade
+            - estado
+            - cep
+
+            No retorno, além dos dados acima, inclua também:
+            "dados_completos": true  → se todos os campos estiverem preenchidos
+            "dados_completos": false → se faltar pelo menos um campo
+
+            Responda APENAS com um JSON válido. Exemplo:
+            {
+            "nome_solicitante": "João",
+            "cpf_solicitante": "12345678900",
+            "nome_animal": "Mancha",
+            "valor_animal": "10000",
+            "raca": "Mangalarga",
+            "data_nascimento": "21/04/2023",
+            "sexo": "inteiro",
+            "utilizacao": "lazer",
+            "rua": "Rua Exemplo",
+            "numero": "123",
+            "bairro": "Centro",
+            "cidade": "Campinas",
+            "estado": "SP",
+            "cep": "13058000",
+            "dados_completos": true
+            }
+            """ + existing_context
             
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {
-                        "role": "system",
-                        "content": f"""
-                        Você é um assistente educado, amigável e objetivo.
-                        Tem a função de coletar dados para seguros de equinos.
-                        Explique claramente se precisar pedir informações adicionais.
-                        Jamais invente dados.
-                        Se não encontrar alguma informação obrigatória, deixe o campo vazio.
-
-                        Campos obrigatórios:
-                        - nome_solicitante
-                        - cpf_solicitante
-                        - nome_animal
-                        - valor_animal
-                        - raca
-                        - data_nascimento
-                        - sexo
-                        - utilizacao
-                        - rua
-                        - numero
-                        - bairro
-                        - cidade
-                        - estado
-                        - cep
-
-                        No retorno, além dos dados acima, inclua também:
-                        "dados_completos": true  → se todos os campos estiverem preenchidos  
-                        "dados_completos": false → se faltar pelo menos um campo
-
-                        Responda APENAS com um JSON válido. Exemplo:
-                        {
-                        "nome_solicitante": "João",
-                        "cpf_solicitante": "12345678900",
-                        "nome_animal": "Mancha",
-                        "valor_animal": "10000",
-                        "raca": "Mangalarga",
-                        "data_nascimento": "21/04/2023",
-                        "sexo": "inteiro",
-                        "utilizacao": "lazer",
-                        "rua": "Rua Exemplo",
-                        "numero": "123",
-                        "bairro": "Centro",
-                        "cidade": "Campinas",
-                        "estado": "SP",
-                        "cep": "13058000",
-                        "dados_completos": true
-                        }
-                        {existing_context}
-                        """
-                    },
-                    {"role": "user", "content": message}
+                    {"role": "system", "content": system_text},
+                    {"role": "user", "content": message},
                 ],
                 max_tokens=200,
-                temperature=0.1
+                temperature=0.1,
             )
             
             # Tentar extrair JSON da resposta
@@ -160,14 +159,13 @@ Estou aqui para ajudar! 🤝"""
             if json_match:
                 json_str = json_match.group()
                 extracted_data = json.loads(json_str)
-                if extracted_data.get("dados_completos") is True:
-                    logger.info("✅ Todos os dados obrigatórios foram informados pelo usuário.")
-                    result = existing_data.copy()
-                    result.update(extracted_data)
-                    return result
-                else:
-                    logger.info("⚠️ Ainda faltam dados obrigatórios.")
-                    return extracted_data
+                # mescla com o que já tinha
+                base = (existing_data or {}).copy()
+                base.update(extracted_data)
+
+                # valida / normaliza
+                normalizado, faltantes = normaliza_e_valida(base)
+                return normalizado
             else:
                 return existing_data or {}
                 
@@ -210,46 +208,26 @@ Estou aqui para ajudar! 🤝"""
             existing_data = client_data.get('data', {})
             updated_data = self.extract_animal_data(message, existing_data)
             
-            # Verificar campos obrigatórios
-            required_fields = {
-                'nome_animal': 'Nome do Animal',
-                'valor_animal': 'Valor do Animal (R$)',
-                'registro': 'Número de Registro',
-                'raca': 'Raça',
-                'data_nascimento': 'Data de Nascimento',
-                'sexo': 'Sexo (inteiro, castrado ou fêmea)',
-                'utilizacao': 'Utilização (lazer, salto, laço, etc.)',
-                'endereco': 'Endereço (CEP e cidade)'
-            }
-            
-            # Campos coletados e faltantes
-            collected_fields = []
-            missing_fields = []
-            
-            # Normaliza campos (remove espaços, converte tudo para string)
-            updated_data = {k: str(v).strip() if v else "" for k, v in updated_data.items()}
-
-            missing_fields = [field for field in required_fields if not updated_data.get(field)]
-            
-            # Gerar resposta baseada no estado
-            # Se IA já informou que está tudo completo
-            if updated_data.get("dados_completos") is True:
-                complete_data = "\n".join(collected_fields)
+            if updated_data.get("dados_completos"):
+                # monte o resumo e siga pro fluxo SwissRe
+                complete_data = "\n".join([f"✅ {k}: {updated_data[k]}" for k in
+                    ["nome","cpf","rua","numero","bairro","cidade","uf","cep","valor"]])
                 return self.templates['complete_data'].format(complete_data=complete_data)
-            
-            elif len(collected_fields) > 0:
-                # Dados parciais
-                collected_data = "\\n".join(collected_fields) if collected_fields else "Nenhum dado coletado ainda."
-                missing_data = "\\n".join(missing_fields)
-                return self.templates['partial_data'].format(
-                    collected_data=collected_data,
-                    missing_data=missing_data
-                )
-            
             else:
-                # Nenhum dado extraído - solicitar informações
-                return self._generate_helpful_response(message)
-        
+                # liste apenas os que faltam, com rótulos amigáveis
+                obrigatorios_pt = {
+                "nome":"Nome Solicitante","cpf":"CPF Solicitante","valor":"Valor do Animal (R$)",
+                "rua":"Rua","numero":"Número","bairro":"Bairro","cidade":"Cidade","uf":"Estado","cep":"CEP"
+                }
+                _, faltantes = normaliza_e_valida(updated_data)
+                missing = "\n".join(f"❌ {obrigatorios_pt[c]}" for c in faltantes)
+                collected = "\n".join(f"✅ {obrigatorios_pt.get(k,k)}: {v}"
+                                    for k,v in updated_data.items() if k in obrigatorios_pt and v)
+                return self.templates['partial_data'].format(
+                    collected_data= collected or "Nenhum dado coletado ainda.",
+                    missing_data= missing
+                )
+
         except Exception as e:
             logger.error(f"Erro ao gerar resposta: {str(e)}")
             return self.templates['error']

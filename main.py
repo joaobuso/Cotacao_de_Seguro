@@ -2,12 +2,12 @@
 """
 Bot de Cotação de Seguros - Versão Completa com Portal de Resposta
 """
-
+import re
 import os
 import logging
 import requests
 import urllib.parse
-import re
+import uuid
 from datetime import datetime
 from flask import Flask, request, jsonify, render_template_string, session, redirect, url_for, flash
 from dotenv import load_dotenv
@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 # Criar aplicação Flask
 app = Flask(__name__)
+MAX_QUOTES_PER_DAY = 20
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-12345')
 
 # Configurações UltraMsg
@@ -43,6 +44,20 @@ conversations_collection = None
 clients_collection = None
 agents_collection = None
 quotations_collection = None
+
+def gerar_cotacao_id():
+    return f"{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
+
+def count_user_quotes_today(phone):
+    today = datetime.now().strftime("%Y-%m-%d")
+    # Exemplo para MongoDB
+    return db.quotations.count_documents({
+        "phone": phone,
+        "created_at": {"$regex": f"^{today}"}
+    })
+
+def reset_client_session(phone):
+    save_client_data_to_db(phone, {}, 'collecting')
 
 # Tentar conectar MongoDB
 def init_mongodb():
@@ -322,7 +337,7 @@ def save_client_data_to_db(phone, data, status='collecting'):
         logger.error(f"❌ Erro ao salvar cliente: {str(e)}")
         return False
 
-def save_quotation_to_db(phone, client_data, pdf_url=None, status='processing', completed_by='bot', agent_email=None):
+def save_quotation_to_db(phone, client_data, pdf_path=None, status='processing', completed_by='bot', agent_email=None):
     """Salva cotação no MongoDB"""
     if not mongodb_connected:
         return False
@@ -331,7 +346,7 @@ def save_quotation_to_db(phone, client_data, pdf_url=None, status='processing', 
         quotation = {
             'phone': phone,
             'client_data': client_data,
-            'pdf_url': pdf_url,
+            'pdf_path': pdf_path,
             'status': status,  # processing, completed, failed
             'completed_by': completed_by,  # bot, human
             'agent_email': agent_email,
@@ -523,28 +538,33 @@ def check_human_request(message):
     return any(keyword in message_lower for keyword in human_keywords)
 
 def generate_bot_response(phone, message):
-    """Gera resposta do bot com IA e integração com SwissRe"""
     try:
-        # 📌 Buscar dados existentes
+        # 🧮 Limite diário
+        if count_user_quotes_today(phone) >= MAX_QUOTES_PER_DAY:
+            return "⚠️ Você atingiu o limite de 20 cotações por hoje. Tente novamente amanhã ou fale com nosso atendimento."
+
+        # 📊 Buscar dados existentes
         client = get_client_data_from_db(phone)
         conversation_count = client.get('conversation_count', 0) + 1 if client else 0
         existing_data = client.get('data', {}) if client else {}
 
-        # 🧠 Extrair dados da mensagem usando o gerador inteligente
+        # 🧠 Extrair dados da mensagem
         updated_data = response_generator.extract_animal_data(message, existing_data)
 
-        # 💾 Salvar dados atualizados no banco
-        status = 'completed' if check_all_required_fields(updated_data) else 'collecting'
-        logger.info(f"📊 STATUS para {phone}: {status} — Campos: {updated_data}")
+        # 🆕 Se for nova cotação (ex: usuário digitou 'nova cotação')
+        if message.strip().lower() in ["nova cotacao", "nova cotação", "nova"]:
+            reset_client_session(phone)
+            updated_data = {}
+            updated_data["cotacao_id"] = gerar_cotacao_id()
+            status = 'collecting'
+        else:
+            status = 'completed' if check_all_required_fields(updated_data) else 'collecting'
+
+        # 💾 Salvar dados
         save_client_data_to_db(phone, updated_data, status)
 
-        # 📝 Gerar resposta contextual automática
-        bot_response = response_generator.generate_response(
-            phone,
-            message,
-            {'data': updated_data},
-            conversation_count
-        )
+        # 📝 Gerar resposta
+        bot_response = response_generator.generate_response(phone, message, {'data': updated_data}, conversation_count)
 
         # 🐎 Se todos os dados obrigatórios estiverem preenchidos — chama automação SwissRe
         if status == 'completed':
@@ -552,9 +572,9 @@ def generate_bot_response(phone, message):
             swissre_result = call_swissre_automation(updated_data)
 
             if swissre_result.get('success'):
-                save_quotation_to_db(phone, updated_data, swissre_result.get('pdf_url'), 'completed', 'bot')
-                if swissre_result.get('pdf_url'):
-                    send_ultramsg_document(phone, swissre_result['pdf_url'], "🎉 Sua cotação de seguro equino está pronta!")
+                save_quotation_to_db(phone, updated_data, swissre_result.get('pdf_path'), 'completed', 'bot')
+                if swissre_result.get('pdf_path'):
+                    send_ultramsg_document(phone, swissre_result['pdf_path'], "🎉 Sua cotação de seguro equino está pronta!")
 
                 resumo = response_generator.format_final_summary({'data': updated_data})
                 bot_response = f"{resumo}\n\n✅ Proposta enviada via WhatsApp."
@@ -567,7 +587,6 @@ def generate_bot_response(phone, message):
             bot_response = f"⚠️ Houve um erro na etapa de cotação, mas não se preocupe. Um atendente entrará em contato com você!"
         # 💾 Salvar conversa
         save_conversation_to_db(phone, message, bot_response, 'bot')
-
         return bot_response
 
     except Exception as e:
@@ -912,7 +931,7 @@ def agent_complete_quotation():
     
     try:
         phone = request.form.get('phone')
-        pdf_url = request.form.get('pdf_url', '')
+        pdf_path = request.form.get('pdf_path', '')
         
         if not phone:
             return jsonify({"error": "Telefone é obrigatório"}), 400
@@ -923,7 +942,7 @@ def agent_complete_quotation():
             return jsonify({"error": "Cliente não encontrado"}), 404
         
         # Salvar cotação como completa pelo humano
-        save_quotation_to_db(phone, client.get('data', {}), pdf_url, 'completed', 'human', session['agent_email'])
+        save_quotation_to_db(phone, client.get('data', {}), pdf_path, 'completed', 'human', session['agent_email'])
         
         # Enviar mensagem de finalização
         completion_message = """🎉 *Cotacao finalizada por nosso especialista!*
@@ -937,8 +956,8 @@ Obrigado por escolher a Equinos Seguros! 🐴✨"""
         save_conversation_to_db(phone, "", completion_message, 'human', session['agent_email'])
         
         # Enviar PDF se fornecido
-        if pdf_url:
-            send_ultramsg_document(phone, pdf_url, "📋 Sua cotacao personalizada")
+        if pdf_path:
+            send_ultramsg_document(phone, pdf_path, "📋 Sua cotacao personalizada")
         
         return jsonify({
             "success": True,

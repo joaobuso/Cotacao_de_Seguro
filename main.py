@@ -493,8 +493,8 @@ def extract_animal_data_improved(message, existing_data=None):
 
 def check_all_required_fields(data: dict) -> bool:
     required = [
-        "nome_solicitante",
-        "cpf_solicitante",
+        "nome",
+        "cpf",
         "nome_animal",
         "valor_animal",
         "raca",

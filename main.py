@@ -588,9 +588,9 @@ def generate_bot_response(phone, message):
             else:
                 save_quotation_to_db(phone, updated_data, None, 'failed', 'bot')
                 bot_response = f"⚠️ Houve um erro ao gerar a cotação: {swissre_result.get('message', 'erro desconhecido')}."
-        else:
-            save_quotation_to_db(phone, updated_data, None, 'failed', 'bot')
-            bot_response = f"⚠️ Houve um erro na etapa de cotação, mas não se preocupe. Um atendente entrará em contato com você!"
+        # else:
+        #     save_quotation_to_db(phone, updated_data, None, 'failed', 'bot')
+        #     bot_response = f"⚠️ Houve um erro na etapa de cotação, mas não se preocupe. Um atendente entrará em contato com você!"
         # 💾 Salvar conversa
         save_conversation_to_db(phone, message, bot_response, 'bot')
         return bot_response

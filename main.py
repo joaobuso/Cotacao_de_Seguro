@@ -13,6 +13,7 @@ from flask import Flask, request, jsonify, render_template_string, session, redi
 from dotenv import load_dotenv
 import hashlib
 from templates_portal import *
+from response_generator import response_generator
 
 # Carregar variáveis de ambiente
 load_dotenv()
@@ -516,159 +517,53 @@ def check_human_request(message):
     return any(keyword in message_lower for keyword in human_keywords)
 
 def generate_bot_response(phone, message):
-    """Gera resposta do bot com validação melhorada"""
+    """Gera resposta do bot com IA e integração com SwissRe"""
     try:
-        # Verificar se quer atendimento humano
-        needs_human = check_human_request(message)
-        
-        if needs_human:
-            response = """👨‍💼 *Transferindo para atendimento humano...*
-
-Entendi que voce precisa de ajuda personalizada.
-Um de nossos especialistas ira atende-lo em breve.
-
-Enquanto isso, pode continuar enviando as informacoes
-do seu animal que ja vamos organizando tudo! 😊"""
-            
-            save_conversation_to_db(phone, message, response, 'bot', needs_human=True)
-            return response
-        
-        # Buscar dados existentes
+        # 📌 Buscar dados existentes
         client = get_client_data_from_db(phone)
-        
-        if client is None:
-            conversation_count = 1
-            existing_data = {}
-        else:
-            conversation_count = client.get('conversation_count', 0) + 1
-            existing_data = client.get('data', {})
-        
-        # Extrair dados da mensagem
-        updated_data = extract_animal_data_improved(message, existing_data)
-        
-        # Campos obrigatórios
-        required_fields = {
-            'nome_animal': 'Nome do Animal',
-            'valor_animal': 'Valor do Animal (R$)',
-            'registro': 'Numero de Registro',
-            'raca': 'Raca',
-            'data_nascimento': 'Data de Nascimento',
-            'sexo': 'Sexo (inteiro, castrado ou femea)',
-            'utilizacao': 'Utilizacao (lazer, salto, laco, etc.)',
-            'endereco_cocheira': 'Endereco da Cocheira (CEP e cidade)'
-        }
-        
-        # Verificar campos
-        missing_fields = []
-        collected_fields = []
-        
-        for field_key, field_name in required_fields.items():
-            if field_key in updated_data and updated_data[field_key]:
-                collected_fields.append(f"✅ {field_name}: {updated_data[field_key]}")
-            else:
-                missing_fields.append(f"❌ {field_name}")
-        
-        # Verificar se todos os campos estão completos
-        all_fields_complete = check_all_required_fields(updated_data)
-        
-        # Salvar dados
-        status = 'completed' if all_fields_complete else 'collecting'
+        conversation_count = client.get('conversation_count', 0) + 1 if client else 0
+        existing_data = client.get('data', {}) if client else {}
+
+        # 🧠 Extrair dados da mensagem usando o gerador inteligente
+        updated_data = response_generator.extract_animal_data(message, existing_data)
+
+        # 💾 Salvar dados atualizados no banco
+        status = 'completed' if check_all_required_fields(updated_data) else 'collecting'
         save_client_data_to_db(phone, updated_data, status)
-        
-        # Se todos os campos estão completos, chamar automação SwissRe
-        if all_fields_complete and status == 'completed':
-            logger.info(f"🎯 Todos os dados completos para {phone} - Iniciando automação SwissRe")
-            logger.info(f'Dados: {updated_data}')
-            
-            # Chamar automação SwissRe
+
+        # 📝 Gerar resposta contextual automática
+        bot_response = response_generator.generate_response(
+            phone,
+            message,
+            {'data': updated_data},
+            conversation_count
+        )
+
+        # 🐎 Se todos os dados obrigatórios estiverem preenchidos — chama automação SwissRe
+        if status == 'completed':
+            logger.info(f"🎯 Dados completos para {phone}, iniciando SwissRe")
             swissre_result = call_swissre_automation(updated_data)
-            
-            if swissre_result['success']:
-                # Salvar cotação como completa
+
+            if swissre_result.get('success'):
                 save_quotation_to_db(phone, updated_data, swissre_result.get('pdf_url'), 'completed', 'bot')
-                
-                # Enviar PDF via WhatsApp
                 if swissre_result.get('pdf_url'):
-                    send_ultramsg_document(phone, swissre_result['pdf_url'], 
-                                         "🎉 Sua cotacao de seguro equino esta pronta!")
-                
-                data_summary = "\\n".join(collected_fields)
-                response = f"""🎉 *COTACAO FINALIZADA COM SUCESSO!*
+                    send_ultramsg_document(phone, swissre_result['pdf_url'], "🎉 Sua cotação de seguro equino está pronta!")
 
-{data_summary}
+                resumo = response_generator.format_final_summary({'data': updated_data})
+                bot_response = f"{resumo}\n\n✅ Proposta enviada via WhatsApp."
 
-✅ *Sua proposta foi gerada e enviada!*
-
-Nossa equipe processou todas as informacoes e sua
-cotacao personalizada ja foi enviada via WhatsApp.
-
-📋 *Proximos passos:*
-• Analise a proposta recebida
-• Entre em contato para duvidas
-• Confirme a contratacao quando decidir
-
-Obrigado por escolher a Equinos Seguros! 🐴✨"""
             else:
-                # Erro na automação - salvar como falha
                 save_quotation_to_db(phone, updated_data, None, 'failed', 'bot')
-                
-                response = f"""⚠️ *Dados completos coletados, mas houve um problema:*
+                bot_response = f"⚠️ Houve um erro ao gerar a cotação: {swissre_result.get('message', 'erro desconhecido')}."
 
-{swissre_result['message']}
+        # 💾 Salvar conversa
+        save_conversation_to_db(phone, message, bot_response, 'bot')
 
-📞 *Nossa equipe foi notificada e entrara em contato
-em breve para finalizar sua cotacao manualmente.*
+        return bot_response
 
-Obrigado pela paciencia! 🙏"""
-        
-        # Gerar resposta normal se dados incompletos
-        elif conversation_count == 1 or any(word in message.lower() for word in ['oi', 'ola', 'bom dia', 'inicio']):
-            response = """🐴 *Ola! Bem-vindo a Equinos Seguros!*
-
-Sou seu assistente virtual para cotacao de seguros equinos.
-
-📋 *DADOS NECESSARIOS:*
-• Nome do Animal
-• Valor do Animal (R$) - ex: 50000 ou 50.000,00
-• Numero de Registro
-• Raca - ex: Quarto de Milha, Mangalarga
-• Data de Nascimento - formato: DD/MM/AAAA
-• Sexo - inteiro, castrado ou femea
-• Utilizacao - lazer, salto, laco, etc.
-• Endereco da Cocheira - CEP e cidade completos
-
-💡 *DICAS:*
-• Pode enviar tudo de uma vez ou aos poucos
-• Use formatos claros (ex: "Nome: Thor, Valor: 80000")
-• Para ajuda humana, digite "falar com atendente"
-
-Vamos comecar! 😊"""
-        
-        else:
-            collected_list = "\\n".join(collected_fields) if collected_fields else "Nenhum dado coletado ainda."
-            missing_list = "\\n".join(missing_fields[:4])
-            
-            response = f"""📝 *Obrigado pelas informacoes!*
-
-*DADOS JA COLETADOS:*
-{collected_list}
-
-*AINDA PRECISO DE:*
-{missing_list}
-
-💡 *DICA:* Pode enviar varios dados juntos:
-"Nome: Thor, Valor: 80000, Raca: Quarto de Milha"
-
-Continue enviando! 😊"""
-        
-        # Salvar conversa
-        save_conversation_to_db(phone, message, response, 'bot', needs_human=needs_human)
-        
-        return response
-        
     except Exception as e:
         logger.error(f"❌ Erro ao gerar resposta: {str(e)}")
-        return "Ola! Bem-vindo a Equinos Seguros. Vou ajuda-lo com sua cotacao."
+        return "Desculpe, ocorreu um erro ao processar sua mensagem. Tente novamente."
 
 def authenticate_agent(email, password):
     """Autentica agente"""

@@ -183,7 +183,7 @@ Estou aqui para ajudar! 🤝"""
                 'data_nascimento': 'Data de Nascimento',
                 'sexo': 'Sexo (inteiro, castrado ou fêmea)',
                 'utilizacao': 'Utilização (lazer, salto, laço, etc.)',
-                'endereco_cocheira': 'Endereço da Cocheira (CEP e cidade)'
+                'endereco': 'Endereço (CEP e cidade)'
             }
             
             # Campos coletados e faltantes

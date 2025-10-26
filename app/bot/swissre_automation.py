@@ -311,7 +311,7 @@ def generate_quotation_pdf(client_data):
     logger.info(f"Cotacao gerada {contractNumber}")
     response_doc = requests.post(API_URL_DOCUMENT, headers=headers, json=payload_doc)
 
-    logger.info("Status Code:", response_doc.status_code)
+    logger.info(f"Status Code: {response_doc.status_code}")
 
     path_file = os.path.join(path_bot_download, f"Cotacao_{contractNumber}.pdf")
     if response_doc.status_code == 200:
@@ -329,7 +329,7 @@ def generate_quotation_pdf(client_data):
             'quotation_number': contractNumber,
         }
     else:
-        logger.info("Erro:", response_doc.text)
+        logger.info(f"Erro: {response_doc.text}")
         return {
             'success': False,
             'pdf_url': 'pdf_url',

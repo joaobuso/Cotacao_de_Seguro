@@ -296,8 +296,8 @@ def generate_quotation_pdf(client_data):
     dados = quotation_response.json()
     contractNumber = dados['Response']['contractNumber']
     issuanceId = dados['Response']['issuanceId']
-    logger.info("Status Code:", quotation_response.status_code)
-    logger.info("Response:", quotation_response.json())
+    logger.info(f"Status Code: {quotation_response.status_code}")
+    logger.info(f"Response: {quotation_response.json()}")
 
 
     # Capturar Documento .pdf

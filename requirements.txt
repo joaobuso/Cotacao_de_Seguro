@@ -4,7 +4,7 @@ gunicorn==21.2.0
 requests==2.31.0
 openai==1.93.0
 python-dotenv==1.0.0
-pymongo==4.6.0
+pymongo==4.13.2
 cloudinary==1.36.0
 python-dateutil==2.8.2
 gtts==2.4.0

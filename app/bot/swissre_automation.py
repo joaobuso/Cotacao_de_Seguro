@@ -11,8 +11,10 @@ import requests
 from openai import OpenAI
 from dotenv import load_dotenv
 from datetime import datetime
-logger = logging.getLogger(__name__)
 
+from app.bot.pdf_storage import salvar_pdf_mongo 
+
+logger = logging.getLogger(__name__)
 # Carrega as variáveis definidas no arquivo .env
 load_dotenv()
 
@@ -321,10 +323,14 @@ def generate_quotation_pdf(client_data):
 
         logger.info(f"Documento salvo em: {path_file}")
 
+        # 🪄 Salvar no MongoDB
+        pdf_id = salvar_pdf_mongo(path_file, contractNumber)
+        logger.info(f"PDF salvo no MongoDB com ID: {pdf_id}")
+
         return {
             'success': True,
-            'pdf_url': 'pdf_url',
             'pdf_path': path_file,
+            'pdf_id': pdf_id,
             'message': 'Cotação gerada com sucesso',
             'quotation_number': contractNumber,
         }

@@ -15,6 +15,7 @@ import hashlib
 from templates_portal import *
 from response_generator import response_generator
 from database_manager import db_manager
+from app.bot.pdf_storage import recuperar_pdf_mongo
 
 # Carregar variáveis de ambiente
 load_dotenv()
@@ -396,7 +397,7 @@ def call_swissre_automation(client_data):
             logger.info("✅ Cotação SwissRe gerada com sucesso")
             return {
                 'success': True,
-                'pdf_url': result.get('pdf_url'),
+                'pdf_id': result.get('pdf_id'),
                 'pdf_path': result.get('pdf_path'),
                 'message': 'Cotação gerada com sucesso'
             }
@@ -576,15 +577,24 @@ def generate_bot_response(phone, message):
         # 📝 Gerar resposta
         bot_response = response_generator.generate_response(phone, message, {'data': updated_data}, conversation_count)
 
-        # 🐎 Se todos os dados obrigatórios estiverem preenchidos — chama automação SwissRe
         if status == 'completed':
             logger.info(f"🎯 Dados completos para {phone}, iniciando SwissRe")
             swissre_result = call_swissre_automation(updated_data)
 
             if swissre_result.get('success'):
-                save_quotation_to_db(phone, updated_data, swissre_result.get('pdf_path'), 'completed', 'bot')
-                if swissre_result.get('pdf_path'):
-                    send_ultramsg_document(phone, swissre_result['pdf_path'], "🎉 Sua cotação de seguro equino está pronta!")
+                pdf_id = swissre_result.get('pdf_id')
+                save_quotation_to_db(phone, updated_data, pdf_id, 'completed', 'bot')
+
+                # 📎 Recuperar PDF temporariamente e enviar
+                temp_path = f"/tmp/{os.path.basename(swissre_result.get('pdf_path', 'cotacao.pdf'))}"
+                if recuperar_pdf_mongo(updated_data.get('cotacao_id', swissre_result['quotation_number']), temp_path):
+                    send_ultramsg_document(
+                        phone,
+                        temp_path,
+                        "📄 Sua cotação de seguro equino foi gerada com sucesso!"
+                    )
+                else:
+                    logger.error("❌ Erro ao recuperar PDF do MongoDB para envio.")
 
                 resumo = response_generator.format_final_summary({'data': updated_data})
                 bot_response = f"{resumo}\n\n✅ Proposta enviada via WhatsApp."
@@ -592,10 +602,7 @@ def generate_bot_response(phone, message):
             else:
                 save_quotation_to_db(phone, updated_data, None, 'failed', 'bot')
                 bot_response = f"⚠️ Houve um erro ao gerar a cotação: {swissre_result.get('message', 'erro desconhecido')}."
-        # else:
-        #     save_quotation_to_db(phone, updated_data, None, 'failed', 'bot')
-        #     bot_response = f"⚠️ Houve um erro na etapa de cotação, mas não se preocupe. Um atendente entrará em contato com você!"
-        # 💾 Salvar conversa
+
         save_conversation_to_db(phone, message, bot_response, 'bot')
         return bot_response
 

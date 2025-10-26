@@ -399,6 +399,7 @@ def call_swissre_automation(client_data):
                 'success': True,
                 'pdf_id': result.get('pdf_id'),
                 'pdf_path': result.get('pdf_path'),
+                'quotation_number': result.get('quotation_number'),
                 'message': 'Cotação gerada com sucesso'
             }
         else:

@@ -5,8 +5,8 @@ import os
 
 # Conexão com MongoDB (pega do .env)
 MONGO_URI = os.getenv("MONGO_URI")
-MONGO_DB = os.getenv("MONGO_DB", "bot_cotacao")
-MONGO_COLLECTION = os.getenv("MONGO_PDF_COLLECTION", "pdfs")
+MONGO_DB = os.getenv("DB_NAME")
+MONGO_COLLECTION = os.getenv("MONGO_PDF_COLLECTION")
 
 client = MongoClient(MONGO_URI)
 db = client[MONGO_DB]

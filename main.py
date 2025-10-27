@@ -588,7 +588,7 @@ def generate_bot_response(phone, message):
 
                 # 📎 Recuperar PDF temporariamente e enviar
                 temp_path = f"/tmp/{os.path.basename(swissre_result.get('pdf_path', 'cotacao.pdf'))}"
-                if recuperar_pdf_mongo(swissre_result.get('pdf_id'), temp_path):
+                if recuperar_pdf_mongo(swissre_result.get('quotation_number'), temp_path):
                     send_ultramsg_document(
                         phone,
                         temp_path,

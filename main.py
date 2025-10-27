@@ -4,6 +4,7 @@ Bot de Cotação de Seguros - Versão Completa com Portal de Resposta
 """
 import re
 import os
+import base64
 import logging
 import requests
 import urllib.parse
@@ -258,35 +259,48 @@ def send_ultramsg_message(phone, message):
         logger.error(f"❌ Erro ao enviar: {str(e)}")
         return False
 
-def send_ultramsg_document(phone, document_url, caption=""):
-    """Envia documento via UltraMsg"""
+def send_ultramsg_document(phone: str, file_path: str, caption: str = "") -> bool:
+    """
+    📎 Envia documento PDF via UltraMsg usando base64.
+    - phone: número do telefone no formato +55DDDNUMERO ou 55DDDNUMERO
+    - file_path: caminho local do arquivo PDF
+    - caption: legenda opcional enviada junto com o arquivo
+    """
     try:
+        # Endpoint da UltraMsg
         url = f"{ULTRAMSG_BASE_URL}/messages/document"
         clean_phone = phone.replace('@c.us', '').replace('+', '')
-        
+
+        # Ler e converter arquivo para base64
+        with open(file_path, "rb") as f:
+            encoded_file = base64.b64encode(f.read()).decode("utf-8")
+
+        filename = os.path.basename(file_path)
+
         data = {
-            'token': ULTRAMSG_TOKEN,
-            'to': clean_phone,
-            'document': document_url,
-            'caption': clean_text_for_whatsapp(caption)
+            "token": ULTRAMSG_TOKEN,
+            "to": clean_phone,
+            "document": encoded_file,
+            "filename": filename,
+            "caption": clean_text_for_whatsapp(caption),
         }
-        
+
         payload = urllib.parse.urlencode(data, encoding='utf-8')
         headers = {'content-type': 'application/x-www-form-urlencoded; charset=utf-8'}
-        
-        logger.info(f"📎 Enviando documento para {clean_phone}")
-        
+
+        logger.info(f"📎 Enviando documento {filename} para {clean_phone} via UltraMsg...")
+
         response = requests.post(url, data=payload, headers=headers, timeout=30)
-        
+
         if response.status_code == 200:
-            logger.info("✅ Documento enviado")
+            logger.info(f"✅ Documento {filename} enviado com sucesso")
             return True
         else:
-            logger.error(f"❌ Erro HTTP: {response.status_code}")
+            logger.error(f"❌ Falha ao enviar documento {filename} - Status {response.status_code} - Resposta: {response.text}")
             return False
-            
+
     except Exception as e:
-        logger.error(f"❌ Erro ao enviar documento: {str(e)}")
+        logger.error(f"❌ Erro ao enviar documento {file_path}: {str(e)}")
         return False
 
 def save_conversation_to_db(phone, message, response, message_type='bot', agent_email=None, needs_human=False):

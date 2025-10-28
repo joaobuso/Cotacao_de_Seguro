@@ -591,7 +591,7 @@ def generate_bot_response(phone, message):
 
         # 📝 Gerar resposta
         bot_response = response_generator.generate_response(phone, message, {'data': updated_data}, conversation_count)
-
+        mensagem = {}
         if status == 'completed':
             logger.info(f"🎯 Dados completos para {phone}, iniciando SwissRe")
             swissre_result = call_swissre_automation(updated_data)
@@ -601,17 +601,17 @@ def generate_bot_response(phone, message):
                 save_quotation_to_db(phone, updated_data, pdf_id, 'completed', 'bot')
 
                 # 📎 Recuperar PDF temporariamente e enviar
-                bot_response['pdf_path'] = swissre_result.get('pdf_path', 'cotacao.pdf')
-                bot_response['quotation_number'] = swissre_result.get('quotation_number')
+                mensagem['pdf_path'] = swissre_result.get('pdf_path', 'cotacao.pdf')
+                mensagem['quotation_number'] = swissre_result.get('quotation_number')
                 resumo = response_generator.format_final_summary({'data': updated_data})
-                bot_response['bot_response'] = f"{resumo}\n\n✅ Proposta enviada via WhatsApp."
+                mensagem['bot_response'] = f"{resumo}\n\n✅ Proposta enviada via WhatsApp."
 
             else:
                 save_quotation_to_db(phone, updated_data, None, 'failed', 'bot')
-                bot_response['bot_response'] = f"⚠️ Houve um erro ao gerar a cotação: {swissre_result.get('message', 'erro desconhecido')}."
+                mensagem['bot_response'] = f"⚠️ Houve um erro ao gerar a cotação: {swissre_result.get('message', 'erro desconhecido')}."
 
-        save_conversation_to_db(phone, message, bot_response, 'bot')
-        return bot_response
+        save_conversation_to_db(phone, message, mensagem, 'bot')
+        return mensagem
 
     except Exception as e:
         logger.error(f"❌ Erro ao gerar resposta: {str(e)}")

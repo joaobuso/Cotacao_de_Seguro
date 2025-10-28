@@ -601,22 +601,14 @@ def generate_bot_response(phone, message):
                 save_quotation_to_db(phone, updated_data, pdf_id, 'completed', 'bot')
 
                 # 📎 Recuperar PDF temporariamente e enviar
-                temp_path = f"/tmp/{os.path.basename(swissre_result.get('pdf_path', 'cotacao.pdf'))}"
-                if recuperar_pdf_mongo(swissre_result.get('quotation_number'), temp_path):
-                    send_ultramsg_document(
-                        phone,
-                        temp_path,
-                        "📄 Sua cotação de seguro equino foi gerada com sucesso!"
-                    )
-                else:
-                    logger.error("❌ Erro ao recuperar PDF do MongoDB para envio.")
-
+                bot_response['pdf_path'] = swissre_result.get('pdf_path', 'cotacao.pdf')
+                bot_response['quotation_number'] = swissre_result.get('quotation_number')
                 resumo = response_generator.format_final_summary({'data': updated_data})
-                bot_response = f"{resumo}\n\n✅ Proposta enviada via WhatsApp."
+                bot_response['bot_response'] = f"{resumo}\n\n✅ Proposta enviada via WhatsApp."
 
             else:
                 save_quotation_to_db(phone, updated_data, None, 'failed', 'bot')
-                bot_response = f"⚠️ Houve um erro ao gerar a cotação: {swissre_result.get('message', 'erro desconhecido')}."
+                bot_response['bot_response'] = f"⚠️ Houve um erro ao gerar a cotação: {swissre_result.get('message', 'erro desconhecido')}."
 
         save_conversation_to_db(phone, message, bot_response, 'bot')
         return bot_response
@@ -720,13 +712,22 @@ def webhook_ultramsg():
         bot_response = generate_bot_response(phone_number, message_body)
         
         # Enviar resposta
-        success = send_ultramsg_message(phone_number, bot_response)
+        success = send_ultramsg_message(phone_number, bot_response['bot_response'])
+
+        temp_path = f"/tmp/{os.path.basename(bot_response['pdf_path'])}"
+        if recuperar_pdf_mongo(bot_response['quotation_number'], temp_path):
+            send_ultramsg_document(
+                phone_number,
+                temp_path,
+                "📄 Sua cotação de seguro equino foi gerada com sucesso!")
+        else:
+            logger.error("❌ Erro ao recuperar PDF do MongoDB para envio.")
         
         if success:
             return jsonify({
                 "status": "success",
                 "message_received": message_body,
-                "response_sent": bot_response[:100] + "...",
+                "response_sent": bot_response['bot_response'][:100] + "...",
                 "sender": sender_name,
                 "mongodb_connected": mongodb_connected
             }), 200

@@ -592,6 +592,7 @@ def generate_bot_response(phone, message):
         # 📝 Gerar resposta
         bot_response = response_generator.generate_response(phone, message, {'data': updated_data}, conversation_count)
         mensagem = {}
+        mensagem['status'] = status
         if status == 'completed':
             logger.info(f"🎯 Dados completos para {phone}, iniciando SwissRe")
             swissre_result = call_swissre_automation(updated_data)
@@ -710,18 +711,20 @@ def webhook_ultramsg():
         
         # Gerar resposta
         bot_response = generate_bot_response(phone_number, message_body)
+        logger.info(f"bot_response: {bot_response['bot_response']}")
         
         # Enviar resposta
         success = send_ultramsg_message(phone_number, bot_response['bot_response'])
 
-        temp_path = f"/tmp/{os.path.basename(bot_response['pdf_path'])}"
-        if recuperar_pdf_mongo(bot_response['quotation_number'], temp_path):
-            send_ultramsg_document(
-                phone_number,
-                temp_path,
-                "📄 Sua cotação de seguro equino foi gerada com sucesso!")
-        else:
-            logger.error("❌ Erro ao recuperar PDF do MongoDB para envio.")
+        if bot_response['status'] == 'completed':
+            temp_path = f"/tmp/{os.path.basename(bot_response['pdf_path'])}"
+            if recuperar_pdf_mongo(bot_response['quotation_number'], temp_path):
+                send_ultramsg_document(
+                    phone_number,
+                    temp_path,
+                    "📄 Sua cotação de seguro equino foi gerada com sucesso!")
+            else:
+                logger.error("❌ Erro ao recuperar PDF do MongoDB para envio.")
         
         if success:
             return jsonify({

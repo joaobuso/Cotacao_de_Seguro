@@ -591,6 +591,7 @@ def generate_bot_response(phone, message):
 
         # 📝 Gerar resposta
         bot_response = response_generator.generate_response(phone, message, {'data': updated_data}, conversation_count)
+        logger.info(f'bot_response: {bot_response}')
         mensagem = {}
         mensagem['status'] = status
         if status == 'completed':

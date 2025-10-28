@@ -200,6 +200,7 @@ Estou aqui para ajudar! 🤝"""
     def generate_response(self, phone: str, message: str, client_data: Dict, conversation_count: int) -> str:
         """Gera resposta baseada no contexto"""
         try:
+            logger.info("Gera resposta baseada no contexto")
             # Primeira mensagem - saudação
             if conversation_count == 0:
                 return self.templates['welcome']

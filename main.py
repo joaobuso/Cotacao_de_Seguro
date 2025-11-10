@@ -59,7 +59,7 @@ agents_collection = None
 quotations_collection = None
 
 # Criar adaptadores
-db_adapter = DatabaseAdapter(db_manager, mongo_db=db) 
+db_adapter = DatabaseAdapter(db_manager) 
 ultramsg_adapter = UltraMsgAdapter(ultramsg_api)
 
 # Usar adaptadores

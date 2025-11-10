@@ -725,7 +725,7 @@ def webhook_ultramsg():
         logger.info(f"📱 Webhook recebido - Dados completos: {data}")
         
         # ⭐ CORREÇÃO: Extrair telefone corretamente
-        phone = data.get('from', '')
+        phone = data.get("data", {}).get("from", "")
         
         # Remover sufixos do WhatsApp
         phone = phone.replace('@c.us', '').replace('@g.us', '')
@@ -742,7 +742,7 @@ def webhook_ultramsg():
             }), 400
         
         # Extrair mensagem
-        message = data.get('body', '')
+        message = data.get("data", {}).get("body", "")
         
         logger.info(f"📱 Mensagem de {phone}: {message[:100]}...")
 

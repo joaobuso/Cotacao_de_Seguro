@@ -59,15 +59,16 @@ agents_collection = None
 quotations_collection = None
 
 # Criar adaptadores
-db_adapter = DatabaseAdapter(db_manager)
+db_adapter = DatabaseAdapter(db_manager, mongo_db=db) 
 ultramsg_adapter = UltraMsgAdapter(ultramsg_api)
 
 # Usar adaptadores
 bot_handler = BotHandler(
     db_manager=db_adapter,
     ultramsg_api=ultramsg_adapter,
-    swissre_automation=SwissReAutomation
+    swissre_automation=SwissReAutomation()
 )
+
 @app.get("/reset-client/<phone>")
 def reset_client_endpoint(phone):
     db_manager.reset_client(phone)
@@ -716,15 +717,34 @@ def health_check():
 
 @app.route('/webhook/ultramsg', methods=['POST'])
 def webhook_ultramsg():
-    """Webhook principal"""
+    """Webhook principal - VERSÃO CORRIGIDA"""
     try:
-        
         data = request.get_json()
         
-        phone = data.get('from', '').replace('@c.us', '')
+        # ⭐ LOG DETALHADO para debug
+        logger.info(f"📱 Webhook recebido - Dados completos: {data}")
+        
+        # ⭐ CORREÇÃO: Extrair telefone corretamente
+        phone = data.get('from', '')
+        
+        # Remover sufixos do WhatsApp
+        phone = phone.replace('@c.us', '').replace('@g.us', '')
+        
+        logger.info(f"📱 Telefone extraído: '{phone}'")
+        
+        # Validar se telefone foi extraído
+        if not phone:
+            logger.error("❌ Telefone vazio no webhook!")
+            logger.error(f"❌ Dados recebidos: {data}")
+            return jsonify({
+                "error": "Telefone não encontrado",
+                "data_received": data
+            }), 400
+        
+        # Extrair mensagem
         message = data.get('body', '')
-
-        logger.info(f"📱 Mensagem de {phone} ({message})")
+        
+        logger.info(f"📱 Mensagem de {phone}: {message[:100]}...")
 
         # ⭐ USAR O BOT HANDLER
         result = bot_handler.process_message(phone, message)
@@ -732,9 +752,8 @@ def webhook_ultramsg():
         return jsonify(result)
         
     except Exception as e:
-        logger.error(f"❌ Erro no webhook: {str(e)}")
+        logger.error(f"❌ Erro no webhook: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
-
 
 
 @app.route('/agent/login', methods=['GET', 'POST'])

@@ -18,6 +18,15 @@ from response_generator import response_generator
 from database_manager import db_manager
 from app.bot.pdf_storage import recuperar_pdf_mongo
 
+from app.bot.bot_handler import BotHandler
+
+from app.bot.swissre_automation import generate_quotation_pdf
+
+from flask import Flask, request, jsonify
+from app.bot.bot_handler import BotHandler
+from database_manager import db_manager
+from app.integrations.ultramsg_api import ultramsg_api
+from app.bot.swissre_automation import SwissReAutomation
 # Carregar variáveis de ambiente
 load_dotenv()
 
@@ -47,6 +56,13 @@ conversations_collection = None
 clients_collection = None
 agents_collection = None
 quotations_collection = None
+
+# Inicializar (uma vez, no início)
+bot_handler = BotHandler(
+    db_manager=db_manager,
+    ultramsg_api=ultramsg_api,
+    swissre_automation=SwissReAutomation()
+)
 
 @app.get("/reset-client/<phone>")
 def reset_client_endpoint(phone):
@@ -398,7 +414,7 @@ def call_swissre_automation(client_data):
     """Chama a automação SwissRe para gerar cotação"""
     try:
         # Importar módulo SwissRe
-        from app.bot.swissre_automation import generate_quotation_pdf
+        
         
         logger.info("🔄 Iniciando automação SwissRe...")
         
@@ -698,69 +714,24 @@ def health_check():
 def webhook_ultramsg():
     """Webhook principal"""
     try:
+        
         data = request.get_json()
         
-        if not data or data.get('event_type') != 'message_received':
-            return jsonify({"status": "ignored"}), 200
-        
-        message_data = data.get('data', {})
-        phone_number = message_data.get('from', '')
-        message_body = message_data.get('body', '')
-        sender_name = message_data.get('pushname', 'Cliente')
-        
-        if not phone_number or not message_body or message_data.get('fromMe', False):
-            return jsonify({"status": "ignored"}), 200
-        
-        logger.info(f"📱 Mensagem de {sender_name} ({phone_number}): {message_body}")
-        
-        # Gerar resposta
-        bot_response = generate_bot_response(phone_number, message_body)
-        logger.info(f"bot_response: {bot_response['bot_response']}")
-        
-        # Enviar resposta
-        success = send_ultramsg_message(phone_number, bot_response['bot_response'])
+        phone = data.get('from', '').replace('@c.us', '')
+        message = data.get('body', '')
 
-        if bot_response['status'] == 'completed':
-            temp_path = f"/tmp/{os.path.basename(bot_response['pdf_path'])}"
-            if recuperar_pdf_mongo(bot_response['quotation_number'], temp_path):
-                send_ultramsg_document(
-                    phone_number,
-                    temp_path,
-                    "📄 Sua cotação de seguro equino foi gerada com sucesso!")
-            else:
-                logger.error("❌ Erro ao recuperar PDF do MongoDB para envio.")
+        logger.info(f"📱 Mensagem de {phone} ({message})")
+
+        # ⭐ USAR O BOT HANDLER
+        result = bot_handler.process_message(phone, message)
         
-        if success:
-            return jsonify({
-                "status": "success",
-                "message_received": message_body,
-                "response_sent": bot_response['bot_response'][:100] + "...",
-                "sender": sender_name,
-                "mongodb_connected": mongodb_connected
-            }), 200
-        else:
-            return jsonify({
-                "status": "send_failed",
-                "message_received": message_body
-            }), 500
+        return jsonify(result)
         
     except Exception as e:
         logger.error(f"❌ Erro no webhook: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/webhook/test')
-def webhook_test():
-    """Teste do webhook"""
-    test_response = generate_bot_response("test_phone", "oi")
-    return jsonify({
-        "status": "test_success",
-        "bot_response": test_response,
-        "mongodb_connected": mongodb_connected,
-        "ultramsg_configured": ULTRAMSG_TOKEN != 'token_padrao',
-        "agents_configured": len(parse_agents_from_env())
-    })
 
-# PAINEL DE AGENTES COM PORTAL DE RESPOSTA
 
 @app.route('/agent/login', methods=['GET', 'POST'])
 def agent_login():

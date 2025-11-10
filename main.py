@@ -16,11 +16,10 @@ import hashlib
 from templates_portal import *
 from response_generator import response_generator
 from database_manager import db_manager
-from app.bot.pdf_storage import recuperar_pdf_mongo
 
 from app.bot.bot_handler import BotHandler
 
-from app.bot.swissre_automation import generate_quotation_pdf
+
 
 from flask import Flask, request, jsonify
 from app.bot.bot_handler import BotHandler
@@ -419,7 +418,7 @@ def call_swissre_automation(client_data):
         logger.info("🔄 Iniciando automação SwissRe...")
         
         # Chamar função de automação
-        result = generate_quotation_pdf(client_data)
+        result = SwissReAutomation.generate_quotation_pdf(client_data)
 
         logger.info(f'Resultado Consulta: {result}')
         

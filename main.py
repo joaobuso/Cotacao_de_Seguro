@@ -19,7 +19,9 @@ from database_manager import db_manager
 
 from app.bot.bot_handler import BotHandler
 
-
+# Importar adaptadores
+from database_adapter import DatabaseAdapter
+from ultramsg_adapter import UltraMsgAdapter
 
 from flask import Flask, request, jsonify
 from app.bot.bot_handler import BotHandler
@@ -56,13 +58,16 @@ clients_collection = None
 agents_collection = None
 quotations_collection = None
 
-# Inicializar (uma vez, no início)
-bot_handler = BotHandler(
-    db_manager=db_manager,
-    ultramsg_api=ultramsg_api,
-    swissre_automation=SwissReAutomation()
-)
+# Criar adaptadores
+db_adapter = DatabaseAdapter(db_manager)
+ultramsg_adapter = UltraMsgAdapter(ultramsg_api)
 
+# Usar adaptadores
+bot_handler = BotHandler(
+    db_manager=db_adapter,
+    ultramsg_api=ultramsg_adapter,
+    swissre_automation=SwissReAutomation
+)
 @app.get("/reset-client/<phone>")
 def reset_client_endpoint(phone):
     db_manager.reset_client(phone)

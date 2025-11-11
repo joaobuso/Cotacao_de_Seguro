@@ -717,36 +717,66 @@ def health_check():
 
 @app.route('/webhook/ultramsg', methods=['POST'])
 def webhook_ultramsg():
-    """Webhook principal - VERSÃO CORRIGIDA"""
+    """Webhook principal - VERSÃO CORRIGIDA COM FILTRO"""
     try:
         data = request.get_json()
         
-        # ⭐ LOG DETALHADO para debug
-        logger.info(f"📱 Webhook recebido - Dados completos: {data}")
+        # ⭐ LOG DETALHADO
+        logger.info(f"📱 Webhook recebido - event_type: {data.get('event_type')}")
         
-        # ⭐ CORREÇÃO: Extrair telefone corretamente
-        phone = data.get("data", {}).get("from", "")
+        # ⭐⭐⭐ CORREÇÃO CRÍTICA: IGNORAR MENSAGENS DO PRÓPRIO BOT ⭐⭐⭐
+        # Verificar se a mensagem é do próprio bot
+        data_field = data.get('data', {})
+        from_me = data_field.get('fromMe', False)
+        is_self = data_field.get('self', False)
+        
+        if from_me or is_self:
+            logger.info(f"⚠️ Ignorando mensagem do próprio bot (fromMe={from_me}, self={is_self})")
+            return jsonify({
+                "status": "ignored",
+                "reason": "message_from_bot"
+            }), 200
+        
+        # ⭐ IGNORAR EVENTOS QUE NÃO SÃO MENSAGENS DO USUÁRIO
+        event_type = data.get('event_type', '')
+        
+        # Apenas processar mensagens recebidas (não ACKs, não status)
+        if event_type not in ['message_create', 'message_received', '']:
+            logger.info(f"⚠️ Ignorando evento: {event_type}")
+            return jsonify({
+                "status": "ignored",
+                "reason": f"event_type_{event_type}"
+            }), 200
+        
+        # ⭐ EXTRAIR TELEFONE
+        phone = data_field.get('from', data.get('from', ''))
         
         # Remover sufixos do WhatsApp
         phone = phone.replace('@c.us', '').replace('@g.us', '')
         
         logger.info(f"📱 Telefone extraído: '{phone}'")
         
-        # Validar se telefone foi extraído
+        # Validar telefone
         if not phone:
             logger.error("❌ Telefone vazio no webhook!")
-            logger.error(f"❌ Dados recebidos: {data}")
             return jsonify({
                 "error": "Telefone não encontrado",
                 "data_received": data
             }), 400
         
-        # Extrair mensagem
-        message = data.get("data", {}).get("body", "")
+        # ⭐ EXTRAIR MENSAGEM
+        message = data_field.get('body', data.get('body', ''))
+        
+        if not message:
+            logger.warning("⚠️ Mensagem vazia, ignorando")
+            return jsonify({
+                "status": "ignored",
+                "reason": "empty_message"
+            }), 200
         
         logger.info(f"📱 Mensagem de {phone}: {message[:100]}...")
 
-        # ⭐ USAR O BOT HANDLER
+        # ⭐ PROCESSAR COM BOT HANDLER
         result = bot_handler.process_message(phone, message)
         
         return jsonify(result)

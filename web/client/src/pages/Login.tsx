@@ -13,7 +13,7 @@ export default function Login() {
   const [, setLocation] = useLocation()
 
   if (isAuthenticated) {
-    setLocation('/portal/dashboard')
+    setLocation('/dashboard')
     return null
   }
 
@@ -24,7 +24,7 @@ export default function Login() {
 
     const success = await login(email, password)
     if (success) {
-      setLocation('/portal/dashboard')
+      setLocation('/dashboard')
     } else {
       setError('Email ou senha incorretos')
     }

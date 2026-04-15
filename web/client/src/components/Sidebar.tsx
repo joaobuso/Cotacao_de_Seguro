@@ -12,12 +12,11 @@ import {
 } from 'lucide-react'
 
 const navItems = [
-  { path: '/portal/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/portal/conversations', label: 'Conversas', icon: MessageSquare },
-  { path: '/portal/quotations', label: 'Cotações', icon: FileText },
-  { path: '/portal/faq', label: 'FAQ / Temas', icon: HelpCircle },
+  { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/conversations', label: 'Conversas', icon: MessageSquare },
+  { path: '/quotations', label: 'Cotações', icon: FileText },
+  { path: '/faq', label: 'FAQ / Temas', icon: HelpCircle },
 ]
-
 export default function Sidebar() {
   const [location] = useLocation()
   const { user, logout } = useAuth()

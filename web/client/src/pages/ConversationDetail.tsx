@@ -159,7 +159,7 @@ export default function ConversationDetail({ phone }: Props) {
       subtitle={`Telefone: ${decodedPhone}`}
     >
       <div className="mb-4">
-        <Link href="/portal/conversations">
+        <Link href="/conversations">
           <span className="inline-flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 cursor-pointer">
             <ArrowLeft size={16} />
             Voltar para conversas

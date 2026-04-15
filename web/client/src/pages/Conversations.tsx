@@ -98,7 +98,7 @@ export default function Conversations() {
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
           {filtered.map((conv) => (
-            <Link key={conv.phone} href={`/portal/conversations/${encodeURIComponent(conv.phone)}`}>
+            <Link key={conv.phone} href={`/conversations/${encodeURIComponent(conv.phone)}`}>
               <div className="flex items-center px-6 py-4 hover:bg-slate-50 cursor-pointer transition-all group">
                 {/* Avatar */}
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${

@@ -23,7 +23,7 @@ function PrivateRoute({ component: Component }: { component: React.ComponentType
   }
 
   if (!isAuthenticated) {
-    return <Redirect to="/portal/login" />
+    return <Redirect to="/login" />
   }
 
   return <Component />
@@ -50,7 +50,7 @@ function AppRoutes() {
           <PrivateRoute component={FaqManager} />
         </Route>
         <Route path="/">
-          <Redirect to="/portal/dashboard" />
+          <Redirect to="/dashboard" />
         </Route>
       </Switch>
     </Router>

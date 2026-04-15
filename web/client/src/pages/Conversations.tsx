@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { Link } from 'wouter'
 import Layout from '../components/Layout'
-import { MessageSquare, Phone, Clock, ChevronRight, RefreshCw, Search } from 'lucide-react'
+import { Search, RefreshCw, MessageSquare, Clock, ChevronRight } from 'lucide-react'
 
 interface Conversation {
   phone: string
@@ -13,57 +13,46 @@ interface Conversation {
   has_human_response: boolean
 }
 
+function timeAgo(iso: string | null): string {
+  if (!iso) return ''
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'agora'
+  if (mins < 60) return `${mins}min`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h`
+  return `${Math.floor(hrs / 24)}d`
+}
+
 export default function Conversations() {
-  const [conversations, setConversations] = useState<Conversation[]>([])
-  const [loading, setLoading] = useState(true)
+  const [list, setList] = useState<Conversation[]>([])
   const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(true)
 
-  const fetchConversations = async () => {
-    try {
-      const res = await fetch('/api/conversations', { credentials: 'include' })
-      if (res.ok) {
-        const data = await res.json()
-        setConversations(data)
-      }
-    } catch (err) {
-      console.error('Erro ao buscar conversas:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchConversations()
-    const interval = setInterval(fetchConversations, 15000)
-    return () => clearInterval(interval)
+  const load = useCallback(() => {
+    setLoading(true)
+    fetch('/api/conversations', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d: Conversation[]) => setList(d))
+      .catch(() => {})
+      .finally(() => setLoading(false))
   }, [])
 
-  const filtered = conversations.filter(c =>
-    c.phone_display.toLowerCase().includes(search.toLowerCase()) ||
-    c.phone.includes(search) ||
-    c.last_message.toLowerCase().includes(search.toLowerCase())
+  useEffect(() => {
+    load()
+    const t = setInterval(load, 15000)
+    return () => clearInterval(t)
+  }, [load])
+
+  const filtered = list.filter(
+    (c) =>
+      c.phone.includes(search) ||
+      c.phone_display.toLowerCase().includes(search.toLowerCase()) ||
+      (c.last_message || '').toLowerCase().includes(search.toLowerCase()),
   )
-
-  const formatTimestamp = (ts: string | null) => {
-    if (!ts) return ''
-    try {
-      const date = new Date(ts)
-      const now = new Date()
-      const diffMs = now.getTime() - date.getTime()
-      const diffMins = Math.floor(diffMs / 60000)
-
-      if (diffMins < 1) return 'Agora'
-      if (diffMins < 60) return `${diffMins}min`
-      if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h`
-      return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
-    } catch {
-      return ''
-    }
-  }
 
   return (
     <Layout title="Conversas" subtitle="Todas as conversas via WhatsApp">
-      {/* Toolbar */}
       <div className="flex items-center justify-between mb-6">
         <div className="relative flex-1 max-w-md">
           <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -76,7 +65,7 @@ export default function Conversations() {
           />
         </div>
         <button
-          onClick={() => { setLoading(true); fetchConversations() }}
+          onClick={() => { setLoading(true); load() }}
           className="flex items-center gap-2 px-4 py-2.5 text-sm bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all text-slate-600 ml-4"
         >
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
@@ -84,51 +73,44 @@ export default function Conversations() {
         </button>
       </div>
 
-      {/* Lista */}
-      {loading && conversations.length === 0 ? (
+      {loading && list.length === 0 ? (
         <div className="flex items-center justify-center py-20">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-20 bg-white rounded-xl border border-slate-200">
-          <MessageSquare size={48} className="mx-auto text-slate-300 mb-4" />
-          <h3 className="text-lg font-medium text-slate-600">Nenhuma conversa encontrada</h3>
-          <p className="text-sm text-slate-400 mt-1">As conversas aparecerão aqui quando clientes enviarem mensagens.</p>
+        <div className="text-center py-20 text-slate-500">
+          <MessageSquare size={48} className="mx-auto mb-4 opacity-30" />
+          <p>Nenhuma conversa encontrada</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
-          {filtered.map((conv) => (
-            <Link key={conv.phone} href={`/conversations/${encodeURIComponent(conv.phone)}`}>
-              <div className="flex items-center px-6 py-4 hover:bg-slate-50 cursor-pointer transition-all group">
-                {/* Avatar */}
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  conv.needs_human ? 'bg-red-100' : 'bg-green-100'
-                }`}>
-                  <Phone size={20} className={conv.needs_human ? 'text-red-600' : 'text-green-600'} />
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 divide-y divide-slate-100">
+          {filtered.map((c) => (
+            <Link key={c.phone} href={`/conversations/${encodeURIComponent(c.phone)}`}>
+              <div className="flex items-center gap-4 px-6 py-4 hover:bg-slate-50 cursor-pointer transition-all">
+                <div className="w-10 h-10 bg-green-100 text-green-700 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">
+                  {c.phone_display.slice(-2)}
                 </div>
-
-                {/* Info */}
-                <div className="ml-4 flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-slate-900">{conv.phone_display}</h3>
-                    <div className="flex items-center gap-2">
-                      {conv.needs_human && (
-                        <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded-full">
-                          Humano
-                        </span>
-                      )}
-                      <span className="text-xs text-slate-400 flex items-center gap-1">
-                        <Clock size={12} />
-                        {formatTimestamp(conv.last_timestamp)}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium text-slate-900">{c.phone_display}</p>
+                    {c.needs_human && (
+                      <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">
+                        Humano
                       </span>
-                    </div>
+                    )}
                   </div>
-                  <p className="text-sm text-slate-500 truncate mt-0.5">{conv.last_message}</p>
-                  <p className="text-xs text-slate-400 mt-1">{conv.message_count} mensagens</p>
+                  <p className="text-sm text-slate-500 truncate">{c.last_message}</p>
                 </div>
-
-                {/* Arrow */}
-                <ChevronRight size={20} className="text-slate-300 group-hover:text-slate-500 ml-4 flex-shrink-0 transition-colors" />
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  <div className="text-right">
+                    <p className="text-xs text-slate-400 flex items-center gap-1">
+                      <Clock size={12} />
+                      {timeAgo(c.last_timestamp)}
+                    </p>
+                    <p className="text-xs text-slate-400">{c.message_count} msgs</p>
+                  </div>
+                  <ChevronRight size={16} className="text-slate-300" />
+                </div>
               </div>
             </Link>
           ))}

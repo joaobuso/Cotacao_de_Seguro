@@ -15,7 +15,7 @@ function PrivateRoute({ component: Component }: { component: React.ComponentType
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4" />
           <p className="text-slate-600">Carregando...</p>
         </div>
       </div>
@@ -41,7 +41,9 @@ function AppRoutes() {
           <PrivateRoute component={Conversations} />
         </Route>
         <Route path="/conversations/:phone">
-          {(params) => <PrivateRoute component={() => <ConversationDetail phone={params.phone} />} />}
+          {(params: { phone: string }) => (
+            <PrivateRoute component={() => <ConversationDetail phone={decodeURIComponent(params.phone)} />} />
+          )}
         </Route>
         <Route path="/quotations">
           <PrivateRoute component={Quotations} />

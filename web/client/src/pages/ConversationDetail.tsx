@@ -1,16 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { Link } from 'wouter'
-import Layout from '../components/Layout'
-import {
-  ArrowLeft,
-  Send,
-  RefreshCw,
-  User,
-  Bot,
-  UserCheck,
-  CheckCircle,
-  Clock
-} from 'lucide-react'
+import { ArrowLeft, Send, CheckCircle, User, Bot, Clock } from 'lucide-react'
 
 interface Message {
   sender: string
@@ -18,7 +8,7 @@ interface Message {
   timestamp: string | null
 }
 
-interface ConversationData {
+interface ConvData {
   phone: string
   phone_display: string
   messages: Message[]
@@ -29,273 +19,200 @@ interface Props {
   phone: string
 }
 
-const QUICK_MESSAGES = [
-  { label: 'Saudação', text: 'Olá! Sou especialista da Equinos Seguros. Como posso ajudá-lo?' },
-  { label: 'Solicitar dados', text: 'Preciso de mais informações para sua cotação. Poderia me enviar os dados do animal?' },
-  { label: 'Processando', text: 'Sua cotação está sendo processada! Em breve enviarei o resultado.' },
-  { label: 'Encerrar', text: 'Obrigado por escolher a Equinos Seguros! Se precisar de algo mais, estamos à disposição.' },
+const quickReplies = [
+  'Olá! Como posso ajudar?',
+  'Vou verificar isso para você.',
+  'Sua cotação está sendo processada.',
+  'Por favor, aguarde um momento.',
+  'Obrigado pelo contato!',
 ]
 
+function fmtTime(iso: string | null): string {
+  if (!iso) return ''
+  try {
+    return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  } catch {
+    return ''
+  }
+}
+
 export default function ConversationDetail({ phone }: Props) {
-  const [data, setData] = useState<ConversationData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [message, setMessage] = useState('')
+  const [data, setData] = useState<ConvData | null>(null)
+  const [msg, setMsg] = useState('')
   const [sending, setSending] = useState(false)
+  const [completing, setCompleting] = useState(false)
   const [alert, setAlert] = useState<{ type: string; text: string } | null>(null)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const chatEnd = useRef<HTMLDivElement>(null)
 
-  const decodedPhone = decodeURIComponent(phone)
-
-  const fetchConversation = async () => {
-    try {
-      const res = await fetch(`/api/conversations/${encodeURIComponent(decodedPhone)}`, {
-        credentials: 'include'
-      })
-      if (res.ok) {
-        const result = await res.json()
-        setData(result)
-      }
-    } catch (err) {
-      console.error('Erro:', err)
-    } finally {
-      setLoading(false)
-    }
+  const load = () => {
+    fetch(`/api/conversations/${encodeURIComponent(phone)}`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: ConvData | null) => { if (d) setData(d) })
+      .catch(() => {})
   }
 
   useEffect(() => {
-    fetchConversation()
-    const interval = setInterval(fetchConversation, 10000)
-    return () => clearInterval(interval)
-  }, [decodedPhone])
+    load()
+    const t = setInterval(load, 10000)
+    return () => clearInterval(t)
+  }, [phone])
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [data?.messages])
+    chatEnd.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [data?.messages.length])
 
-  const sendMessage = async (text: string) => {
+  const sendMsg = async (text: string) => {
     if (!text.trim()) return
-
     setSending(true)
-    setAlert(null)
-
     try {
-      const res = await fetch(`/api/conversations/${encodeURIComponent(decodedPhone)}/send`, {
+      const res = await fetch(`/api/conversations/${encodeURIComponent(phone)}/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ message: text })
+        body: JSON.stringify({ message: text }),
       })
-
-      const result = await res.json()
-
-      if (result.success) {
-        setAlert({ type: 'success', text: 'Mensagem enviada com sucesso!' })
-        setMessage('')
-        setTimeout(fetchConversation, 1500)
+      const d = await res.json()
+      if (d.success) {
+        setMsg('')
+        setAlert({ type: 'ok', text: 'Mensagem enviada!' })
+        load()
       } else {
-        setAlert({ type: 'error', text: result.message || 'Erro ao enviar mensagem' })
+        setAlert({ type: 'err', text: d.message || 'Erro ao enviar' })
       }
-    } catch (err) {
-      setAlert({ type: 'error', text: 'Erro de conexão' })
-    } finally {
-      setSending(false)
+    } catch {
+      setAlert({ type: 'err', text: 'Erro de conexão' })
     }
+    setSending(false)
+    setTimeout(() => setAlert(null), 3000)
   }
 
-  const completeQuotation = async () => {
-    if (!confirm('Deseja finalizar a cotação para este cliente?')) return
-
+  const complete = async () => {
+    if (!window.confirm('Finalizar cotação para este cliente?')) return
+    setCompleting(true)
     try {
-      const res = await fetch(`/api/conversations/${encodeURIComponent(decodedPhone)}/complete`, {
+      const res = await fetch(`/api/conversations/${encodeURIComponent(phone)}/complete`, {
         method: 'POST',
-        credentials: 'include'
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
       })
-
-      const result = await res.json()
-
-      if (result.success) {
-        setAlert({ type: 'success', text: 'Cotação finalizada com sucesso!' })
-        setTimeout(fetchConversation, 1500)
+      const d = await res.json()
+      if (d.success) {
+        setAlert({ type: 'ok', text: 'Cotação finalizada!' })
+        load()
       } else {
-        setAlert({ type: 'error', text: result.error || 'Erro ao finalizar cotação' })
+        setAlert({ type: 'err', text: d.error || 'Erro' })
       }
-    } catch (err) {
-      setAlert({ type: 'error', text: 'Erro de conexão' })
-    }
-  }
-
-  const formatTime = (ts: string | null) => {
-    if (!ts) return ''
-    try {
-      return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
     } catch {
-      return ''
+      setAlert({ type: 'err', text: 'Erro de conexão' })
     }
+    setCompleting(false)
+    setTimeout(() => setAlert(null), 3000)
   }
 
-  const formatDate = (ts: string | null) => {
-    if (!ts) return ''
-    try {
-      return new Date(ts).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-    } catch {
-      return ''
-    }
-  }
-
-  const getSenderInfo = (sender: string) => {
-    switch (sender) {
-      case 'user':
-        return { icon: User, label: 'Cliente', bg: 'bg-blue-50', border: 'border-l-blue-500', text: 'text-blue-700' }
-      case 'bot':
-        return { icon: Bot, label: 'Bot', bg: 'bg-green-50', border: 'border-l-green-500', text: 'text-green-700' }
-      default:
-        return { icon: UserCheck, label: 'Agente', bg: 'bg-orange-50', border: 'border-l-orange-500', text: 'text-orange-700' }
-    }
+  if (!data) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600" />
+      </div>
+    )
   }
 
   return (
-    <Layout
-      title={data?.phone_display || 'Conversa'}
-      subtitle={`Telefone: ${decodedPhone}`}
-    >
-      <div className="mb-4">
-        <Link href="/conversations">
-          <span className="inline-flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 cursor-pointer">
-            <ArrowLeft size={16} />
-            Voltar para conversas
-          </span>
-        </Link>
+    <div className="flex min-h-screen bg-slate-50">
+      <div className="flex-1 flex flex-col">
+        <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center gap-4">
+          <Link href="/conversations">
+            <div className="p-2 hover:bg-slate-100 rounded-lg cursor-pointer transition-all">
+              <ArrowLeft size={20} className="text-slate-600" />
+            </div>
+          </Link>
+          <div className="w-10 h-10 bg-green-100 text-green-700 rounded-full flex items-center justify-center font-bold text-sm">
+            {data.phone_display.slice(-2)}
+          </div>
+          <div className="flex-1">
+            <h2 className="font-semibold text-slate-900">{data.phone_display}</h2>
+            <p className="text-xs text-slate-500">{data.messages.length} mensagens</p>
+          </div>
+          <button
+            onClick={complete}
+            disabled={completing}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-all"
+          >
+            <CheckCircle size={16} />
+            {completing ? 'Finalizando...' : 'Finalizar Cotação'}
+          </button>
+        </header>
+
+        {alert && (
+          <div className={`mx-6 mt-3 px-4 py-2 rounded-lg text-sm ${alert.type === 'ok' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+            {alert.text}
+          </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-3">
+          {data.messages.map((m, i) => {
+            const isBot = m.sender === 'bot' || m.sender === 'agent'
+            return (
+              <div key={i} className={`flex ${isBot ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[70%] rounded-2xl px-4 py-3 ${isBot ? 'bg-primary-600 text-white rounded-br-md' : 'bg-white border border-slate-200 text-slate-900 rounded-bl-md'}`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    {isBot ? <Bot size={12} /> : <User size={12} />}
+                    <span className="text-xs opacity-75">{m.sender === 'agent' ? 'Agente' : m.sender === 'bot' ? 'Bot' : 'Cliente'}</span>
+                  </div>
+                  <p className="text-sm whitespace-pre-wrap">{m.message}</p>
+                  {m.timestamp && (
+                    <p className={`text-xs mt-1 flex items-center gap-1 ${isBot ? 'text-white/60' : 'text-slate-400'}`}>
+                      <Clock size={10} />
+                      {fmtTime(m.timestamp)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+          <div ref={chatEnd} />
+        </div>
+
+        <div className="px-6 py-2 flex gap-2 overflow-x-auto">
+          {quickReplies.map((qr) => (
+            <button key={qr} onClick={() => sendMsg(qr)} className="flex-shrink-0 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full text-xs transition-all">
+              {qr}
+            </button>
+          ))}
+        </div>
+
+        <div className="bg-white border-t border-slate-200 px-6 py-4">
+          <form onSubmit={(e) => { e.preventDefault(); sendMsg(msg) }} className="flex gap-3">
+            <input
+              type="text"
+              value={msg}
+              onChange={(e) => setMsg(e.target.value)}
+              placeholder="Digite uma mensagem..."
+              className="flex-1 px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+            />
+            <button type="submit" disabled={sending || !msg.trim()} className="px-6 py-3 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 transition-all flex items-center gap-2">
+              <Send size={18} />
+              Enviar
+            </button>
+          </form>
+        </div>
       </div>
 
-      {loading && !data ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Chat Panel */}
-          <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 flex flex-col" style={{ height: '700px' }}>
-            {/* Header */}
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="font-semibold text-slate-900">Conversa</h3>
-              <button
-                onClick={() => { setLoading(true); fetchConversation() }}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-              </button>
-            </div>
-
-            {/* Alert */}
-            {alert && (
-              <div className={`mx-6 mt-4 px-4 py-2 rounded-lg text-sm ${
-                alert.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-              }`}>
-                {alert.text}
+      <aside className="w-80 bg-white border-l border-slate-200 p-6 overflow-y-auto hidden lg:block">
+        <h3 className="font-semibold text-slate-900 mb-4">Dados do Cliente</h3>
+        {data.client_data ? (
+          <div className="space-y-3">
+            {Object.entries(data.client_data).map(([k, v]) => (
+              <div key={k} className="bg-slate-50 rounded-lg p-3">
+                <p className="text-xs text-slate-500 uppercase tracking-wider">{k}</p>
+                <p className="text-sm font-medium text-slate-900 mt-0.5">{String(v)}</p>
               </div>
-            )}
-
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              {data?.messages.map((msg, i) => {
-                const info = getSenderInfo(msg.sender)
-                const Icon = info.icon
-                return (
-                  <div key={i} className={`${info.bg} border-l-4 ${info.border} rounded-lg p-4`}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Icon size={16} className={info.text} />
-                      <span className={`text-sm font-semibold ${info.text}`}>{info.label}</span>
-                      <span className="text-xs text-slate-400 ml-auto flex items-center gap-1">
-                        <Clock size={12} />
-                        {formatDate(msg.timestamp)} {formatTime(msg.timestamp)}
-                      </span>
-                    </div>
-                    <div className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
-                      {msg.message}
-                    </div>
-                  </div>
-                )
-              })}
-              <div ref={messagesEndRef} />
-            </div>
-
-            {/* Input */}
-            <div className="px-6 py-4 border-t border-slate-200">
-              <div className="flex gap-3">
-                <textarea
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      sendMessage(message)
-                    }
-                  }}
-                  placeholder="Digite sua resposta..."
-                  className="flex-1 px-4 py-3 border border-slate-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-                  rows={2}
-                />
-                <div className="flex flex-col gap-2">
-                  <button
-                    onClick={() => sendMessage(message)}
-                    disabled={sending || !message.trim()}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium transition-all"
-                  >
-                    <Send size={16} />
-                    Enviar
-                  </button>
-                  <button
-                    onClick={completeQuotation}
-                    className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 flex items-center gap-2 text-sm font-medium transition-all"
-                  >
-                    <CheckCircle size={16} />
-                    Finalizar
-                  </button>
-                </div>
-              </div>
-            </div>
+            ))}
           </div>
-
-          {/* Sidebar - Client Data + Quick Messages */}
-          <div className="space-y-6">
-            {/* Client Data */}
-            <div className="bg-white rounded-xl border border-slate-200 p-6">
-              <h3 className="text-lg font-semibold text-slate-900 mb-4">Dados do Cliente</h3>
-              {data?.client_data && Object.keys(data.client_data).length > 0 ? (
-                <div className="space-y-3">
-                  {Object.entries(data.client_data).map(([key, value]) => (
-                    <div key={key} className="border-b border-slate-100 pb-2">
-                      <p className="text-xs text-slate-500 uppercase tracking-wide">
-                        {key.replace(/_/g, ' ')}
-                      </p>
-                      <p className="text-sm font-medium text-slate-900">{value}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-slate-400">Nenhum dado coletado ainda.</p>
-              )}
-            </div>
-
-            {/* Quick Messages */}
-            <div className="bg-white rounded-xl border border-slate-200 p-6">
-              <h3 className="text-lg font-semibold text-slate-900 mb-4">Mensagens Rápidas</h3>
-              <div className="space-y-2">
-                {QUICK_MESSAGES.map((qm, i) => (
-                  <button
-                    key={i}
-                    onClick={() => sendMessage(qm.text)}
-                    disabled={sending}
-                    className="w-full text-left px-3 py-2 text-sm bg-slate-50 hover:bg-slate-100 rounded-lg transition-all disabled:opacity-50"
-                  >
-                    {qm.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </Layout>
+        ) : (
+          <p className="text-sm text-slate-500">Nenhum dado coletado ainda.</p>
+        )}
+      </aside>
+    </div>
   )
 }

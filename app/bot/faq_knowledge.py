@@ -62,7 +62,7 @@ Mais do que um produto, é uma forma de cuidar de quem tem o cavalo como parte i
 Endereço: Av. Moaci, 1220 – Planalto Paulista – São Paulo/SP – CEP 04083-003."""
     },
     4: {
-        "titulo": "Cotação e Contratação",
+        "titulo": "Como funciona o seguro para equinos",
         "palavras_chave": [
             "fazer seguro de cavalo", "fazer seguro agora", "quero fazer seguro",
             "quero segurar meu cavalo", "cotação seguro cavalo",
@@ -70,16 +70,17 @@ Endereço: Av. Moaci, 1220 – Planalto Paulista – São Paulo/SP – CEP 04083
             "contratar seguro cavalo", "como contratar o seguro",
             "documentos para contratar", "o que precisa para fazer seguro"
         ],
-        "resumo": """COTAÇÃO E CONTRATAÇÃO DO SEGURO DO CAVALO
-O primeiro passo é a cotação, em que avaliamos:
-• dados do cavalo (idade, raça, uso, valor, histórico);
-• local onde ele fica (haras, propriedade etc.);
-• coberturas desejadas (vida, emergência, função esportiva, prenhez, roubo/furto etc.).
+        "resumo": """
+O seguro para cavalos protege tanto o proprietário quanto o próprio animal. Se o cavalo vier a óbito em decorrência de riscos cobertos na apólice, a seguradora pode indenizar o dono, reduzindo o impacto financeiro da perda. Além disso, é possível contratar uma cobertura adicional de reembolso de despesas veterinárias emergenciais, que pode ser acionada quando a vida do animal estiver em risco, sempre de acordo com as regras do contrato.
 
-Conforme o caso, a seguradora pode solicitar atestado veterinário e/ou exames, de acordo com o valor do animal e as coberturas contratadas. Todo o processo é feito de forma simples e digital, por WhatsApp e e-mail."""
+A proteção começa com uma cobertura básica de vida e transporte, que cobre, por exemplo: doenças (como cólica), acidentes durante o transporte, raio, choque elétrico, incêndio, explosão e outros riscos previstos em apólice. Também é possível contratar outras coberturas adicionais, conforme as regras de cada seguradora.
+
+Os detalhes exatos (o que cobre, o que não cobre, limites, carências e regras) variam conforme a seguradora e a cotação feita para o seu cavalo. Para te explicar corretamente no contexto do SEU animal, o próximo passo é fazer a cotação.
+
+"""
     },
     5: {
-        "titulo": "Preço, Valor e Forma de Pagamento",
+        "titulo": "Valor do Seguro",
         "palavras_chave": [
             "preço do seguro", "quanto fica o seguro", "quanto custa o seguro",
             "valor seguro cavalo", "seguro é caro", "seguro barato",
@@ -87,12 +88,14 @@ Conforme o caso, a seguradora pode solicitar atestado veterinário e/ou exames, 
             "pode parcelar", "boleto ou cartão", "pagamento no cartão",
             "pagamento no pix"
         ],
-        "resumo": """O valor do seguro depende de:
-• valor do animal;
-• idade, raça e uso (esporte, reprodução, lazer etc.);
-• coberturas escolhidas (vida, emergência, função esportiva, prenhez, roubo/furto etc.).
+        "resumo": """
+O valor do seguro para cavalos varia de acordo com vários fatores, como: região, valor do animal; idade; utilização; tipo de coberturas contratadas.
 
-Na maior parte dos casos, o pagamento pode ser parcelado, conforme regras de cada seguradora (geralmente em boleto). Como referência geral, o custo do seguro costuma ficar em torno de 3% a 7% do valor do animal por ano. É apenas uma média: para saber o valor exato do SEU cavalo, é necessário fazer a cotação."""
+De forma geral, o custo do seguro costuma ficar na faixa de aproximadamente 3% a 7% do valor do animal por ano.  Mas isso é apenas uma referência. 
+
+Para saber o valor correto do seguro do SEU cavalo, o próximo passo é fazer a cotação.
+        
+"""
     },
     6: {
         "titulo": "Vigência do Seguro",

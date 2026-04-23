@@ -11,6 +11,7 @@ from datetime import datetime
 from app.bot.swissre_automation import SwissReAutomation
 from .conversation_flow import conversation_flow, ConversationState
 from .data_extractor import data_extractor
+from parser_validacao import normaliza_e_valida
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,9 @@ class BotHandler:
         # Extrair dados da mensagem (apenas em estados de cotação)
         extracted_data = {}
         extracted_data = data_extractor.extract_data(message, existing_data)
+
+        # 🔥 NORMALIZAÇÃO + VALIDAÇÃO
+        dados_normalizados, faltantes = normaliza_e_valida(extracted_data)
 
         # Processar input e obter próximo estado
         next_state, response = conversation_flow.process_user_input(phone, message, extracted_data)

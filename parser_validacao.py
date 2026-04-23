@@ -4,7 +4,7 @@ import re
 OBRIGATORIOS = ["uf","valor","nome"]
 
 MAPA_CAMPOS = {
-    "nome_solicitante":"nome",
+    "nome":"nome_solicitante",
     "email":"email",
     "uf":"uf",
 }

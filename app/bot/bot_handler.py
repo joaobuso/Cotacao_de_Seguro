@@ -87,15 +87,28 @@ class BotHandler:
         existing_data = conversation_flow.get_conversation_data(phone)
 
         # Extrair dados da mensagem (apenas em estados de cotação)
-        extracted_data = {}
+        # Extrair dados
         extracted_data = data_extractor.extract_data(message, existing_data)
 
-        # 🔥 NORMALIZAÇÃO + VALIDAÇÃO
+        # 🔥 NORMALIZAÇÃO
         dados_normalizados, faltantes = normaliza_e_valida(extracted_data)
 
-        # Processar input e obter próximo estado
-        next_state, response = conversation_flow.process_user_input(phone, message, extracted_data)
+        # 🔥🔥 AQUI É O PONTO CERTO
+        if dados_normalizados:
+            current_state = conversation_flow.get_conversation_state(phone)
 
+            if current_state in [
+                ConversationState.MENU_PRINCIPAL,
+                ConversationState.INITIAL
+            ]:
+                conversation_flow.set_conversation_state(phone, ConversationState.COTACAO_COLETANDO)
+
+        # 🚀 AGORA SIM chama o flow
+        next_state, response = conversation_flow.process_user_input(
+            phone,
+            message,
+            dados_normalizados   # ⚠️ IMPORTANTE: usar normalizado
+        )
         # Verificar se precisa processar cotação
         if next_state == ConversationState.COTACAO_PROCESSANDO:
             return self._process_quotation(phone, conversation_flow.get_conversation_data(phone), response)

@@ -214,11 +214,6 @@ class ConversationFlow:
         if last_interaction:
             time_diff = datetime.now() - last_interaction
 
-            if time_diff > self.CONVERSATION_TIMEOUT:
-                logger.info(f"Conversa expirada para {phone}, resetando para INITIAL")
-                self.reset_conversation(phone)
-                return ConversationState.INITIAL
-
             if conv['state'] == ConversationState.ATENDENTE_ATIVO:
                 if time_diff > self.AGENT_TIMEOUT:
                     logger.info(f"Timeout de atendente para {phone}, reativando bot")
@@ -252,7 +247,10 @@ class ConversationFlow:
                 'cotacoes_realizadas': []
             }
 
-        self.conversations[phone]['data'].update(data)
+        for k, v in data.items():
+            if v and str(v).strip():
+                self.conversations[phone]['data'][k] = v
+
         self.conversations[phone]['last_interaction'] = datetime.now()
         self.conversations[phone]['message_count'] += 1
 
@@ -332,10 +330,19 @@ class ConversationFlow:
     # PROCESSAMENTO PRINCIPAL
     # =========================================================================
 
-    def process_user_input(self, phone: str, message: str) -> Tuple[ConversationState, str]:
+    def process_user_input(self, phone, message, extracted_data=None):
         """
         Processa a entrada do usuário e retorna o próximo estado e mensagem
         """
+        faq = find_topic_by_message(message)
+
+        if faq:
+            self.set_conversation_state(phone, ConversationState.FAQ_RESPOSTA)
+            return ConversationState.FAQ_RESPOSTA, faq['resumo']
+
+        if extracted_data:
+            self.update_conversation_data(phone, extracted_data)
+
         current_state = self.get_conversation_state(phone)
         message_lower = message.lower().strip()
 
@@ -482,11 +489,6 @@ class ConversationFlow:
 
     def _process_cotacao_inicio(self, phone: str, message: str):
         """Processa início da cotação - extrai dados da primeira mensagem"""
-        extracted_data = data_extractor.extract_data(
-            message,
-            self.get_conversation_data(phone)
-        )
-        self.update_conversation_data(phone, extracted_data)
 
         if self.is_data_complete(phone):
             self.set_conversation_state(phone, ConversationState.COTACAO_VALIDANDO)
@@ -504,11 +506,6 @@ class ConversationFlow:
 
     def _process_cotacao_coletando(self, phone: str, message: str):
         """Processa coleta de dados - extrai dados incrementalmente"""
-        extracted_data = data_extractor.extract_data(
-            message,
-            self.get_conversation_data(phone)
-        )
-        self.update_conversation_data(phone, extracted_data)
 
         if self.is_data_complete(phone):
             self.set_conversation_state(phone, ConversationState.COTACAO_VALIDANDO)

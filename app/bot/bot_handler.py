@@ -87,20 +87,10 @@ class BotHandler:
 
         # Extrair dados da mensagem (apenas em estados de cotação)
         extracted_data = {}
-        if current_state in [
-            ConversationState.COTACAO_INICIO,
-            ConversationState.COTACAO_COLETANDO
-        ]:
-            extracted_data = data_extractor.extract_data(message, existing_data)
-            conversation_flow.update_conversation_data(phone, extracted_data)
-
-            # Validar dados extraídos
-            is_valid, errors = data_extractor.validate_data(extracted_data)
-            if errors:
-                logger.warning(f"Erros de validação: {errors}")
+        extracted_data = data_extractor.extract_data(message, existing_data)
 
         # Processar input e obter próximo estado
-        next_state, response = conversation_flow.process_user_input(phone, message)
+        next_state, response = conversation_flow.process_user_input(phone, message, extracted_data)
 
         # Verificar se precisa processar cotação
         if next_state == ConversationState.COTACAO_PROCESSANDO:

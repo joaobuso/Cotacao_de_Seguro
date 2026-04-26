@@ -134,10 +134,13 @@ class BotHandler:
         dados_normalizados, faltantes = normaliza_e_valida(merged_data)
 
         # 🚀 AGORA SIM chama o flow
+        data_to_flow = {} if current_state == ConversationState.COTACAO_EDITANDO else merged_data
+
         next_state, response = conversation_flow.process_user_input(
             phone,
             message,
-            merged_data)
+            data_to_flow
+        )
 
         # Verificar se precisa processar cotação
         if next_state == ConversationState.COTACAO_PROCESSANDO:

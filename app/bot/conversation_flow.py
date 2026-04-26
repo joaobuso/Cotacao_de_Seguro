@@ -353,8 +353,11 @@ class ConversationFlow:
 
         current_state = self.get_conversation_state(phone)
 
-        # 🔥 NÃO chama FAQ se estiver editando
-        if current_state != ConversationState.COTACAO_EDITANDO:
+        # 🔥 Só chama FAQ quando estiver no menu ou em resposta de FAQ
+        if current_state in [
+            ConversationState.MENU_PRINCIPAL,
+            ConversationState.FAQ_RESPOSTA
+        ]:
             faq = find_topic_by_message(message)
             if faq:
                 self.set_conversation_state(phone, ConversationState.FAQ_RESPOSTA)
@@ -435,45 +438,91 @@ class ConversationFlow:
         conv = self.conversations.get(phone, {})
         campo_edicao = conv.get("campo_edicao")
 
-        # 🔥 FASE 2 → usuário já escolheu campo, agora manda valor
-        if campo_edicao:
-            self.conversations[phone]['data'][campo_edicao] = message
-            self.conversations[phone].pop("campo_edicao")
+        mapa_nomes = {
+            "nome_solicitante": "Nome do Solicitante",
+            "nome_animal": "Nome do Animal",
+            "valor_animal": "Valor do Animal",
+            "raca": "Raça",
+            "data_nascimento": "Data de Nascimento",
+            "sexo": "Sexo",
+            "utilizacao": "Utilização",
+            "uf": "UF"
+        }
 
-            # volta para validação com resumo atualizado
+        # FASE 2: já escolheu o campo, agora grava o novo valor
+        if campo_edicao:
+            self.conversations[phone]['data'][campo_edicao] = message.strip()
+            self.conversations[phone].pop("campo_edicao", None)
+
             self.set_conversation_state(phone, ConversationState.COTACAO_VALIDANDO)
 
-            return ConversationState.COTACAO_VALIDANDO, MessageTemplate.format_template(
-                ConversationState.COTACAO_VALIDANDO,
-                resumo_completo=self.format_complete_summary(phone)
+            return ConversationState.COTACAO_VALIDANDO, (
+                f"✅ {mapa_nomes.get(campo_edicao, campo_edicao)} atualizado com sucesso!\n\n" +
+                MessageTemplate.format_template(
+                    ConversationState.COTACAO_VALIDANDO,
+                    resumo_completo=self.format_complete_summary(phone)
+                )
             )
 
-        # 🔥 FASE 1 → usuário está escolhendo campo
+        # FASE 1: escolher qual campo editar
         campo = message.lower().strip()
 
         mapa = {
-            "nome": "nome_solicitante",
+            "1": "nome_solicitante",
+            "nome solicitante": "nome_solicitante",
+            "nome do solicitante": "nome_solicitante",
+
+            "2": "nome_animal",
+            "nome animal": "nome_animal",
+            "nome do animal": "nome_animal",
             "animal": "nome_animal",
+
+            "3": "valor_animal",
             "valor": "valor_animal",
+            "valor animal": "valor_animal",
+            "valor do animal": "valor_animal",
+
+            "4": "raca",
             "raca": "raca",
             "raça": "raca",
+
+            "5": "data_nascimento",
             "data": "data_nascimento",
+            "data nascimento": "data_nascimento",
+            "data de nascimento": "data_nascimento",
+
+            "6": "sexo",
             "sexo": "sexo",
+
+            "7": "utilizacao",
             "utilizacao": "utilizacao",
             "utilização": "utilizacao",
-            "uf": "uf"
+
+            "8": "uf",
+            "uf": "uf",
+            "estado": "uf"
         }
 
         for key, field in mapa.items():
-            if key in campo:
+            if key == campo or key in campo:
                 self.conversations[phone]['campo_edicao'] = field
-                return ConversationState.COTACAO_EDITANDO, f"Qual o novo valor para {key}?"
+                return (
+                    ConversationState.COTACAO_EDITANDO,
+                    f"Qual o novo valor para *{mapa_nomes.get(field, field)}*?"
+                )
 
         return ConversationState.COTACAO_EDITANDO, (
             "Não entendi qual campo deseja alterar.\n\n"
-            "Ex: nome, valor, raça, data..."
+            "Digite uma das opções:\n"
+            "1 - Nome do Solicitante\n"
+            "2 - Nome do Animal\n"
+            "3 - Valor do Animal\n"
+            "4 - Raça\n"
+            "5 - Data de Nascimento\n"
+            "6 - Sexo\n"
+            "7 - Utilização\n"
+            "8 - UF"
         )
-
     def _process_menu_principal(self, phone: str, message_lower: str, message_original: str) -> Tuple[ConversationState, str]:
         """Processa menu principal com 3 opções + FAQ inteligente"""
 
@@ -599,7 +648,15 @@ class ConversationFlow:
 
             return ConversationState.COTACAO_EDITANDO, (
                 "Qual informação você deseja corrigir?\n\n"
-                "Ex: nome, valor, raça..."
+                "Digite uma das opções:\n"
+                "1 - Nome do Solicitante\n"
+                "2 - Nome do Animal\n"
+                "3 - Valor do Animal\n"
+                "4 - Raça\n"
+                "5 - Data de Nascimento\n"
+                "6 - Sexo\n"
+                "7 - Utilização\n"
+                "8 - UF"
             )
 
         else:

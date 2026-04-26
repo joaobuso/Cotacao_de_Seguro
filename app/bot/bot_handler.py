@@ -133,13 +133,13 @@ class BotHandler:
         # Normaliza
         dados_normalizados, faltantes = normaliza_e_valida(merged_data)
 
+        # 🚀 AGORA SIM chama o flow
+        data_to_flow = {} if current_state == ConversationState.COTACAO_EDITANDO else merged_data
+
         logger.info(f"Estado antes do flow: {current_state.value}")
         logger.info(f"Dados existentes: {existing_data}")
         logger.info(f"Dados extraídos: {extracted_data}")
         logger.info(f"Dados enviados ao flow: {data_to_flow}")
-
-        # 🚀 AGORA SIM chama o flow
-        data_to_flow = {} if current_state == ConversationState.COTACAO_EDITANDO else merged_data
 
         next_state, response = conversation_flow.process_user_input(
             phone,

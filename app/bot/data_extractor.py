@@ -103,20 +103,13 @@ Exemplo:
                 json_str = json_match.group()
                 extracted_data = json.loads(json_str)
 
-                # Mesclar com dados existentes
-                if existing_data:
-                    merged_data = existing_data.copy()
-                    for key, value in extracted_data.items():
-                        if value and str(value).strip():
-                            # Só atualiza se for diferente
-                            if key not in merged_data or merged_data[key] != value:
-                                merged_data[key] = value
-                    return merged_data
-                else:
-                    return extracted_data
+                # Importante:
+                # Retornar apenas os dados NOVOS extraídos da mensagem.
+                # O merge com os dados antigos já é feito no BotHandler.
+                return extracted_data
             else:
                 logger.warning("Não foi possível extrair JSON da resposta da IA")
-                return existing_data or {}
+                return {}
 
         except Exception as e:
             logger.error(f"Erro na extração com IA: {str(e)}")

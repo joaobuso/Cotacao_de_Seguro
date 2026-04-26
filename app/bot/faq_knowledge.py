@@ -1,3 +1,6 @@
+import unicodedata
+import re
+
 # -*- coding: utf-8 -*-
 """
 Base de Conhecimento FAQ - Equinos Seguros
@@ -409,6 +412,19 @@ Cada seguradora tem regras específicas, mas quanto mais rápido for o aviso, ma
     }
 }
 
+def normalizar_texto(texto: str) -> str:
+    texto = texto.lower().strip()
+
+    texto = unicodedata.normalize("NFD", texto)
+    texto = "".join(
+        char for char in texto
+        if unicodedata.category(char) != "Mn"
+    )
+
+    texto = re.sub(r"[^a-z0-9\s]", " ", texto)
+    texto = re.sub(r"\s+", " ", texto)
+
+    return texto
 
 def get_all_keywords_map():
     """Retorna um dicionário {palavra_chave: topic_id} para busca rápida"""
@@ -424,24 +440,27 @@ def find_topic_by_message(message: str) -> dict:
     Tenta encontrar um tópico FAQ baseado na mensagem do usuário.
     Retorna o tópico encontrado ou None.
     """
-    message_lower = message.lower().strip()
-    
+
+    message_normalized = normalizar_texto(message)
+
     best_match = None
     best_score = 0
-    
+
     for topic_id, topic in FAQ_TOPICS.items():
         score = 0
+
         for kw in topic["palavras_chave"]:
-            kw_lower = kw.lower()
-            if kw_lower in message_lower:
-                # Pontuação baseada no tamanho da keyword (mais específica = melhor)
-                score += len(kw_lower.split())
-        
+            kw_normalized = normalizar_texto(kw)
+
+            if kw_normalized in message_normalized:
+                # Quanto maior/específica a palavra-chave, maior a pontuação
+                score += len(kw_normalized.split())
+
         if score > best_score:
             best_score = score
             best_match = topic
-    
+
     if best_score >= 1:
         return best_match
-    
+
     return None

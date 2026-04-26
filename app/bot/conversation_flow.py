@@ -404,18 +404,34 @@ class ConversationFlow:
                     )
 
         # ---------------------------------------------------------
-        # 3. FAQ só deve rodar se estiver no menu ou dentro de FAQ
+        # 3. FAQ por palavra-chave
+        # Pode rodar em vários estados da conversa, desde que não esteja
+        # em edição, validação final, processamento ou atendimento humano.
         # ---------------------------------------------------------
         current_state = self.get_conversation_state(phone)
 
-        if current_state in [
+        estados_permitidos_faq = [
+            ConversationState.INITIAL,
             ConversationState.MENU_PRINCIPAL,
-            ConversationState.FAQ_RESPOSTA
-        ]:
+            ConversationState.FAQ_RESPOSTA,
+            ConversationState.COTACAO_INICIO,
+            ConversationState.COTACAO_COLETANDO,
+            ConversationState.COTACAO_CONCLUIDA,
+            ConversationState.POS_COTACAO,
+        ]
+
+        if current_state in estados_permitidos_faq:
             faq = find_topic_by_message(message)
+
             if faq:
+                faq_texto = f"*{faq['titulo']}*\n\n{faq['resumo']}"
+
                 self.set_conversation_state(phone, ConversationState.FAQ_RESPOSTA)
-                return ConversationState.FAQ_RESPOSTA, faq['resumo']
+
+                return ConversationState.FAQ_RESPOSTA, MessageTemplate.format_template(
+                    ConversationState.FAQ_RESPOSTA,
+                    faq_texto=faq_texto
+                )
 
         # Verificar se usuário quer falar com atendente
         if self._is_handoff_request(message_lower):

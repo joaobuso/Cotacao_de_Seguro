@@ -347,13 +347,60 @@ class ConversationFlow:
         """
         Processa a entrada do usuário e retorna o próximo estado e mensagem
         """
-        # 🔥 SEMPRE atualizar interação
+
+        # Sempre atualizar interação
         if phone in self.conversations:
             self.conversations[phone]['last_interaction'] = datetime.now()
 
         current_state = self.get_conversation_state(phone)
+        message_lower = message.lower().strip()
 
-        # 🔥 Só chama FAQ quando estiver no menu ou em resposta de FAQ
+        # ---------------------------------------------------------
+        # 1. Se está em edição, não chama FAQ e não atualiza dados aqui
+        # ---------------------------------------------------------
+        if current_state == ConversationState.COTACAO_EDITANDO:
+            return self._process_cotacao_editando(phone, message)
+
+        # ---------------------------------------------------------
+        # 2. Se recebeu dados de cotação, salva e força fluxo de cotação
+        # ---------------------------------------------------------
+        if extracted_data:
+            campos_cotacao = set(self.REQUIRED_FIELDS.keys())
+
+            tem_dado_cotacao = any(
+                k in campos_cotacao and extracted_data.get(k)
+                for k in extracted_data.keys()
+            )
+
+            if tem_dado_cotacao:
+                self.update_conversation_data(phone, extracted_data)
+
+                if current_state in [
+                    ConversationState.INITIAL,
+                    ConversationState.MENU_PRINCIPAL,
+                    ConversationState.COTACAO_INICIO,
+                    ConversationState.COTACAO_COLETANDO,
+                    ConversationState.COTACAO_VALIDANDO
+                ]:
+                    if self.is_data_complete(phone):
+                        self.set_conversation_state(phone, ConversationState.COTACAO_VALIDANDO)
+                        return ConversationState.COTACAO_VALIDANDO, MessageTemplate.format_template(
+                            ConversationState.COTACAO_VALIDANDO,
+                            resumo_completo=self.format_complete_summary(phone)
+                        )
+
+                    self.set_conversation_state(phone, ConversationState.COTACAO_COLETANDO)
+                    return ConversationState.COTACAO_COLETANDO, MessageTemplate.format_template(
+                        ConversationState.COTACAO_COLETANDO,
+                        dados_coletados=self.format_collected_data(phone),
+                        dados_faltantes=self.format_missing_data(phone)
+                    )
+
+        # ---------------------------------------------------------
+        # 3. FAQ só deve rodar se estiver no menu ou dentro de FAQ
+        # ---------------------------------------------------------
+        current_state = self.get_conversation_state(phone)
+
         if current_state in [
             ConversationState.MENU_PRINCIPAL,
             ConversationState.FAQ_RESPOSTA
@@ -362,12 +409,6 @@ class ConversationFlow:
             if faq:
                 self.set_conversation_state(phone, ConversationState.FAQ_RESPOSTA)
                 return ConversationState.FAQ_RESPOSTA, faq['resumo']
-
-        if current_state != ConversationState.COTACAO_EDITANDO and extracted_data:
-            self.update_conversation_data(phone, extracted_data)
-
-        current_state = self.get_conversation_state(phone)
-        message_lower = message.lower().strip()
 
         # Verificar se usuário quer falar com atendente
         if self._is_handoff_request(message_lower):
@@ -412,7 +453,7 @@ class ConversationFlow:
 
         elif current_state == ConversationState.POS_COTACAO:
             return self._process_pos_cotacao(phone, message_lower, message)
-        
+
         elif current_state == ConversationState.COTACAO_EDITANDO:
             return self._process_cotacao_editando(phone, message)
 

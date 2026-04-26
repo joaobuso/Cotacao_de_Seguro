@@ -217,8 +217,14 @@ class ConversationFlow:
             # 🔥 TIMEOUT GERAL (10 min)
             if time_diff > self.CONVERSATION_TIMEOUT:
                 logger.info(f"Timeout de conversa ({phone}) - resetando")
-                self.reset_conversation(phone)
-                return ConversationState.INITIAL
+                if conv['state'] not in [
+                    ConversationState.COTACAO_COLETANDO,
+                    ConversationState.COTACAO_VALIDANDO,
+                    ConversationState.MENU_PRINCIPAL,
+                    ConversationState.FAQ_RESPOSTA
+                ]:
+                    self.reset_conversation(phone)
+                    return ConversationState.INITIAL
 
             # Timeout de atendente (mantém)
             if conv['state'] == ConversationState.ATENDENTE_ATIVO:
@@ -340,6 +346,10 @@ class ConversationFlow:
         """
         Processa a entrada do usuário e retorna o próximo estado e mensagem
         """
+        # 🔥 SEMPRE atualizar interação
+        if phone in self.conversations:
+            self.conversations[phone]['last_interaction'] = datetime.now()
+
         faq = find_topic_by_message(message)
 
         if faq:

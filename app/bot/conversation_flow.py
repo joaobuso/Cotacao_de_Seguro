@@ -212,6 +212,9 @@ class ConversationFlow:
         conv = self.conversations[phone]
         last_interaction = conv.get('last_interaction')
 
+        logger.info(f"[STATE] phones em memória: {list(self.conversations.keys())}")
+        logger.info(f"[STATE] phone atual: {phone}")
+
         if last_interaction:
             time_diff = datetime.now() - last_interaction
 

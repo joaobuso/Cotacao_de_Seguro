@@ -355,6 +355,10 @@ class ConversationFlow:
         current_state = self.get_conversation_state(phone)
         message_lower = message.lower().strip()
 
+        # 🔥 Se está validando, comandos 1 e 2 têm prioridade
+        if current_state == ConversationState.COTACAO_VALIDANDO:
+            return self._process_cotacao_validando(phone, message_lower)
+
         # ---------------------------------------------------------
         # 1. Se está em edição, não chama FAQ e não atualiza dados aqui
         # ---------------------------------------------------------

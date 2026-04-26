@@ -134,7 +134,7 @@ class BotHandler:
         dados_normalizados, faltantes = normaliza_e_valida(merged_data)
 
         # 🚀 AGORA SIM chama o flow
-        data_to_flow = {} if current_state == ConversationState.COTACAO_EDITANDO else merged_data
+        data_to_flow = {} if (current_state == ConversationState.COTACAO_EDITANDO or is_control) else merged_data
 
         logger.info(f"Estado antes do flow: {current_state.value}")
         logger.info(f"Dados existentes: {existing_data}")

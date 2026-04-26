@@ -128,15 +128,6 @@ class BotHandler:
         # Normaliza
         dados_normalizados, faltantes = normaliza_e_valida(merged_data)
 
-        if merged_data:
-            current_state = conversation_flow.get_conversation_state(phone)
-
-            if current_state in [
-                ConversationState.MENU_PRINCIPAL,
-                ConversationState.INITIAL
-            ]:
-                conversation_flow.set_conversation_state(phone, ConversationState.COTACAO_COLETANDO)
-
         # 🚀 AGORA SIM chama o flow
         next_state, response = conversation_flow.process_user_input(
             phone,

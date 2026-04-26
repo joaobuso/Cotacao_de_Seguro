@@ -48,6 +48,17 @@ class BotHandler:
             current_state = conversation_flow.get_conversation_state(phone)
             logger.info(f"Estado atual: {current_state.value}")
 
+            # 🔥 SE FOR INICIAL → ENVIA SAUDAÇÃO
+            if current_state == ConversationState.INITIAL:
+                conversation_flow.set_conversation_state(phone, ConversationState.MENU_PRINCIPAL)
+
+                from app.bot.conversation_flow import MessageTemplate
+                welcome_msg = MessageTemplate.get_template(ConversationState.INITIAL)
+
+                self._send_response(phone, welcome_msg)
+
+                current_state = ConversationState.MENU_PRINCIPAL 
+
             # Verificar se conversa está com atendente
             if current_state == ConversationState.ATENDENTE_ATIVO:
                 logger.info(f"Conversa com atendente ativo, não processar pelo bot")
@@ -83,9 +94,6 @@ class BotHandler:
         """
         Processa mensagem com extração de dados
         """
-        # Obter dados existentes
-        existing_data = conversation_flow.get_conversation_data(phone)
-
         # Extrair dados da mensagem (apenas em estados de cotação)
         # Dados atuais
         existing_data = conversation_flow.get_conversation_data(phone)
@@ -93,8 +101,15 @@ class BotHandler:
         # 🔥 Detecta se é edição
         is_update = is_update_intent(message)
 
-        # Extrai dados
-        extracted_data = data_extractor.extract_data(message, existing_data)
+
+        message_lower = message.lower().strip()
+
+        # 🔥 NÃO EXTRAI DADOS SE FOR CONTROLE
+        if message_lower in ['1', '2', 'sim', 'nao', 'não']:
+            extracted_data = {}
+        else:
+            extracted_data = data_extractor.extract_data(message, existing_data)
+
 
         # 🔥 MERGE CONTROLADO
         merged_data = existing_data.copy() if existing_data else {}
@@ -121,8 +136,7 @@ class BotHandler:
         # Normaliza
         dados_normalizados, faltantes = normaliza_e_valida(merged_data)
 
-        # 🔥🔥 AQUI É O PONTO CERTO
-        if dados_normalizados:
+        if merged_data:
             current_state = conversation_flow.get_conversation_state(phone)
 
             if current_state in [
@@ -135,14 +149,11 @@ class BotHandler:
         next_state, response = conversation_flow.process_user_input(
             phone,
             message,
-            dados_normalizados   # ⚠️ IMPORTANTE: usar normalizado
-        )
+            merged_data)
+
         # Verificar se precisa processar cotação
         if next_state == ConversationState.COTACAO_PROCESSANDO:
             return self._process_quotation(phone, conversation_flow.get_conversation_data(phone), response)
-
-        # Enviar resposta
-        self._send_response(phone, response)
 
         if alteracoes:
             texto_alteracoes = "\n".join(
@@ -150,6 +161,9 @@ class BotHandler:
             )
 
             response = texto_alteracoes + "\n\n" + response
+
+        # Enviar resposta
+        self._send_response(phone, response)
 
         # Salvar resposta no banco
         if self.db_manager:

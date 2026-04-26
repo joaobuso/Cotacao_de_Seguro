@@ -214,9 +214,15 @@ class ConversationFlow:
         if last_interaction:
             time_diff = datetime.now() - last_interaction
 
+            # 🔥 TIMEOUT GERAL (10 min)
+            if time_diff > self.CONVERSATION_TIMEOUT:
+                logger.info(f"Timeout de conversa ({phone}) - resetando")
+                self.reset_conversation(phone)
+                return ConversationState.INITIAL
+
+            # Timeout de atendente (mantém)
             if conv['state'] == ConversationState.ATENDENTE_ATIVO:
                 if time_diff > self.AGENT_TIMEOUT:
-                    logger.info(f"Timeout de atendente para {phone}, reativando bot")
                     self.reset_conversation(phone)
                     return ConversationState.INITIAL
 

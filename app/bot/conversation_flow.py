@@ -31,6 +31,7 @@ class ConversationState(Enum):
     AGUARDANDO_ATENDENTE = "aguardando_atendente"
     ATENDENTE_ATIVO = "atendente_ativo"
     ENCERRADA = "encerrada"
+    COTACAO_EDITANDO = "cotacao_editando"
 
 
 class MessageTemplate:
@@ -350,11 +351,14 @@ class ConversationFlow:
         if phone in self.conversations:
             self.conversations[phone]['last_interaction'] = datetime.now()
 
-        faq = find_topic_by_message(message)
+        current_state = self.get_conversation_state(phone)
 
-        if faq:
-            self.set_conversation_state(phone, ConversationState.FAQ_RESPOSTA)
-            return ConversationState.FAQ_RESPOSTA, faq['resumo']
+        # 🔥 NÃO chama FAQ se estiver editando
+        if current_state != ConversationState.COTACAO_EDITANDO:
+            faq = find_topic_by_message(message)
+            if faq:
+                self.set_conversation_state(phone, ConversationState.FAQ_RESPOSTA)
+                return ConversationState.FAQ_RESPOSTA, faq['resumo']
 
         if extracted_data:
             self.update_conversation_data(phone, extracted_data)
@@ -405,6 +409,9 @@ class ConversationFlow:
 
         elif current_state == ConversationState.POS_COTACAO:
             return self._process_pos_cotacao(phone, message_lower, message)
+        
+        elif current_state == ConversationState.COTACAO_EDITANDO:
+            return self._process_cotacao_editando(phone, message)
 
         else:
             self.reset_conversation(phone)
@@ -422,6 +429,49 @@ class ConversationFlow:
         self.set_conversation_state(phone, ConversationState.MENU_PRINCIPAL)
         return ConversationState.MENU_PRINCIPAL, MessageTemplate.get_template(
             ConversationState.INITIAL
+        )
+
+    def _process_cotacao_editando(self, phone, message):
+        conv = self.conversations.get(phone, {})
+        campo_edicao = conv.get("campo_edicao")
+
+        # 🔥 FASE 2 → usuário já escolheu campo, agora manda valor
+        if campo_edicao:
+            self.conversations[phone]['data'][campo_edicao] = message
+            self.conversations[phone].pop("campo_edicao")
+
+            # volta para validação com resumo atualizado
+            self.set_conversation_state(phone, ConversationState.COTACAO_VALIDANDO)
+
+            return ConversationState.COTACAO_VALIDANDO, MessageTemplate.format_template(
+                ConversationState.COTACAO_VALIDANDO,
+                resumo_completo=self.format_complete_summary(phone)
+            )
+
+        # 🔥 FASE 1 → usuário está escolhendo campo
+        campo = message.lower().strip()
+
+        mapa = {
+            "nome": "nome_solicitante",
+            "animal": "nome_animal",
+            "valor": "valor_animal",
+            "raca": "raca",
+            "raça": "raca",
+            "data": "data_nascimento",
+            "sexo": "sexo",
+            "utilizacao": "utilizacao",
+            "utilização": "utilizacao",
+            "uf": "uf"
+        }
+
+        for key, field in mapa.items():
+            if key in campo:
+                self.conversations[phone]['campo_edicao'] = field
+                return ConversationState.COTACAO_EDITANDO, f"Qual o novo valor para {key}?"
+
+        return ConversationState.COTACAO_EDITANDO, (
+            "Não entendi qual campo deseja alterar.\n\n"
+            "Ex: nome, valor, raça, data..."
         )
 
     def _process_menu_principal(self, phone: str, message_lower: str, message_original: str) -> Tuple[ConversationState, str]:
@@ -545,14 +595,11 @@ class ConversationFlow:
             )
 
         elif message in ['2', 'nao', 'não', 'n', 'corrigir']:
-            self.set_conversation_state(phone, ConversationState.COTACAO_COLETANDO)
-            return ConversationState.COTACAO_COLETANDO, (
-                "Ok! Me diga qual informação está incorreta e qual é o valor correto.\n\n" +
-                MessageTemplate.format_template(
-                    ConversationState.COTACAO_COLETANDO,
-                    dados_coletados=self.format_collected_data(phone),
-                    dados_faltantes=self.format_missing_data(phone)
-                )
+            self.set_conversation_state(phone, ConversationState.COTACAO_EDITANDO)
+
+            return ConversationState.COTACAO_EDITANDO, (
+                "Qual informação você deseja corrigir?\n\n"
+                "Ex: nome, valor, raça..."
             )
 
         else:

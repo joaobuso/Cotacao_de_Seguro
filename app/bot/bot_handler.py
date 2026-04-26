@@ -48,16 +48,6 @@ class BotHandler:
             current_state = conversation_flow.get_conversation_state(phone)
             logger.info(f"Estado atual: {current_state.value}")
 
-            # 🔥 SE FOR INICIAL → ENVIA SAUDAÇÃO
-            if current_state == ConversationState.INITIAL:
-                conversation_flow.set_conversation_state(phone, ConversationState.MENU_PRINCIPAL)
-
-                from app.bot.conversation_flow import MessageTemplate
-                welcome_msg = MessageTemplate.get_template(ConversationState.INITIAL)
-
-                self._send_response(phone, welcome_msg)
-
-                current_state = ConversationState.MENU_PRINCIPAL 
 
             # Verificar se conversa está com atendente
             if current_state == ConversationState.ATENDENTE_ATIVO:

@@ -360,7 +360,7 @@ class ConversationFlow:
                 self.set_conversation_state(phone, ConversationState.FAQ_RESPOSTA)
                 return ConversationState.FAQ_RESPOSTA, faq['resumo']
 
-        if extracted_data:
+        if current_state != ConversationState.COTACAO_EDITANDO and extracted_data:
             self.update_conversation_data(phone, extracted_data)
 
         current_state = self.get_conversation_state(phone)

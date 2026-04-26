@@ -97,10 +97,15 @@ class BotHandler:
         # 🔥 NÃO EXTRAI DADOS SE FOR CONTROLE
         is_control = message_lower in ['0', '1', '2', '3', 'sim', 'nao', 'não']
 
-        if is_control:
+        current_state = conversation_flow.get_conversation_state(phone)
+
+        if current_state == ConversationState.COTACAO_EDITANDO:
             extracted_data = {}
         else:
-            extracted_data = data_extractor.extract_data(message, existing_data)
+            if is_control:
+                extracted_data = {}
+            else:
+                extracted_data = data_extractor.extract_data(message, existing_data)
 
 
         # 🔥 MERGE CONTROLADO

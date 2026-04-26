@@ -1,7 +1,16 @@
 # parser_validacao.py
 import re
 
-OBRIGATORIOS = ["uf","valor","nome"]
+OBRIGATORIOS = [
+    "nome_solicitante",
+    "nome_animal",
+    "valor_animal",
+    "raca",
+    "data_nascimento",
+    "sexo",
+    "utilizacao",
+    "uf"
+]
 
 MAPA_CAMPOS = {
     "nome":"nome_solicitante",
@@ -29,7 +38,7 @@ def normaliza_e_valida(dados: dict) -> tuple[dict, list]:
     # dados2["cep"]   = somente_digitos(dados2.get("cep"))
     # dados2["cpf"]   = somente_digitos(dados2.get("cpf"))
     dados2["uf"]    = (dados2.get("uf") or "").strip().upper()
-    dados2["valor"] = normaliza_valor(dados2.get("valor") or dados2.get("valor_animal"))
+    dados2["valor_animal"] = normaliza_valor(dados2.get("valor_animal") or dados2.get("valor"))
 
     # 3) faltantes
     faltantes = [c for c in OBRIGATORIOS if not (dados2.get(c) or "").strip()]

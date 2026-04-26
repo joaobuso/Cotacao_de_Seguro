@@ -108,7 +108,9 @@ Exemplo:
                     merged_data = existing_data.copy()
                     for key, value in extracted_data.items():
                         if value and str(value).strip():
-                            merged_data[key] = value
+                            # Só atualiza se for diferente
+                            if key not in merged_data or merged_data[key] != value:
+                                merged_data[key] = value
                     return merged_data
                 else:
                     return extracted_data
@@ -228,6 +230,15 @@ Exemplo:
 
         return len(errors) == 0, errors
 
+def is_update_intent(message: str) -> bool:
+    msg = message.lower()
+
+    palavras = [
+        "corrigir", "alterar", "mudar", "trocar",
+        "na verdade", "errado", "corrige", "ajustar"
+    ]
+
+    return any(p in msg for p in palavras)
 
 # Instância global do extrator
 data_extractor = DataExtractor()

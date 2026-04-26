@@ -10,7 +10,7 @@ from datetime import datetime
 
 from app.bot.swissre_automation import SwissReAutomation
 from .conversation_flow import conversation_flow, ConversationState
-from .data_extractor import data_extractor
+from .data_extractor import data_extractor, is_update_intent
 from parser_validacao import normaliza_e_valida
 
 logger = logging.getLogger(__name__)
@@ -87,11 +87,39 @@ class BotHandler:
         existing_data = conversation_flow.get_conversation_data(phone)
 
         # Extrair dados da mensagem (apenas em estados de cotação)
-        # Extrair dados
+        # Dados atuais
+        existing_data = conversation_flow.get_conversation_data(phone)
+
+        # 🔥 Detecta se é edição
+        is_update = is_update_intent(message)
+
+        # Extrai dados
         extracted_data = data_extractor.extract_data(message, existing_data)
 
-        # 🔥 NORMALIZAÇÃO
-        dados_normalizados, faltantes = normaliza_e_valida(extracted_data)
+        # 🔥 MERGE CONTROLADO
+        merged_data = existing_data.copy() if existing_data else {}
+
+        alteracoes = []
+
+        for key, value in extracted_data.items():
+            if value and str(value).strip():
+
+                old_value = merged_data.get(key)
+
+                # 🔥 regra:
+                # - se for update → permite sobrescrever
+                # - se não for → só preenche se não existir
+                if is_update:
+                    if old_value != value:
+                        merged_data[key] = value
+                        alteracoes.append(f"{key}: {old_value} → {value}")
+                else:
+                    if key not in merged_data or not merged_data.get(key):
+                        merged_data[key] = value
+
+
+        # Normaliza
+        dados_normalizados, faltantes = normaliza_e_valida(merged_data)
 
         # 🔥🔥 AQUI É O PONTO CERTO
         if dados_normalizados:
@@ -115,6 +143,13 @@ class BotHandler:
 
         # Enviar resposta
         self._send_response(phone, response)
+
+        if alteracoes:
+            texto_alteracoes = "\n".join(
+                [f"🔄 Atualizado {a}" for a in alteracoes]
+            )
+
+            response = texto_alteracoes + "\n\n" + response
 
         # Salvar resposta no banco
         if self.db_manager:

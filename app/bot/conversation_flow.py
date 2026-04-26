@@ -248,7 +248,7 @@ class ConversationFlow:
             }
 
         for k, v in data.items():
-            if v and str(v).strip():
+            if v and str(v).strip() and str(v).lower() != "none":
                 self.conversations[phone]['data'][k] = v
 
         self.conversations[phone]['last_interaction'] = datetime.now()

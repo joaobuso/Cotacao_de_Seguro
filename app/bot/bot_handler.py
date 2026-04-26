@@ -98,7 +98,7 @@ class BotHandler:
         is_control = message_lower in ['0', '1', '2', '3', 'sim', 'nao', 'não']
 
         if is_control:
-            extracted_data = None
+            extracted_data = {}
         else:
             extracted_data = data_extractor.extract_data(message, existing_data)
 

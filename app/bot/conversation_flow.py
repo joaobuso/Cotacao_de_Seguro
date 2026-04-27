@@ -362,23 +362,61 @@ class ConversationFlow:
         current_state = self.get_conversation_state(phone)
         message_lower = message.lower().strip()
 
-        # Agora sim atualiza a última interação
         if phone in self.conversations:
             self.conversations[phone]["last_interaction"] = datetime.now()
 
-        # 🔥 Se está validando, comandos 1 e 2 têm prioridade
+        # 1. Validação tem prioridade
         if current_state == ConversationState.COTACAO_VALIDANDO:
             return self._process_cotacao_validando(phone, message_lower)
 
-        # ---------------------------------------------------------
-        # 1. Se está em edição, não chama FAQ e não atualiza dados aqui
-        # ---------------------------------------------------------
+        # 2. Edição tem prioridade
         if current_state == ConversationState.COTACAO_EDITANDO:
             return self._process_cotacao_editando(phone, message)
 
-        # ---------------------------------------------------------
-        # 2. Se recebeu dados de cotação, salva e força fluxo de cotação
-        # ---------------------------------------------------------
+        # 3. Atendente tem prioridade
+        if self._is_handoff_request(message_lower):
+            self.set_conversation_state(phone, ConversationState.AGUARDANDO_ATENDENTE)
+            return ConversationState.AGUARDANDO_ATENDENTE, MessageTemplate.get_template(
+                ConversationState.AGUARDANDO_ATENDENTE
+            )
+
+        # 4. Menu / voltar
+        if message_lower in ['menu', 'voltar', '0'] and current_state not in [
+            ConversationState.INITIAL,
+            ConversationState.COTACAO_COLETANDO,
+            ConversationState.COTACAO_VALIDANDO,
+            ConversationState.COTACAO_PROCESSANDO
+        ]:
+            self.set_conversation_state(phone, ConversationState.MENU_PRINCIPAL)
+            return ConversationState.MENU_PRINCIPAL, MessageTemplate.get_template(
+                ConversationState.INITIAL
+            )
+
+        # 5. FAQ por palavra-chave ANTES do extracted_data
+        estados_permitidos_faq = [
+            ConversationState.INITIAL,
+            ConversationState.MENU_PRINCIPAL,
+            ConversationState.FAQ_RESPOSTA,
+            ConversationState.COTACAO_INICIO,
+            ConversationState.COTACAO_COLETANDO,
+            ConversationState.COTACAO_CONCLUIDA,
+            ConversationState.POS_COTACAO,
+        ]
+
+        if current_state in estados_permitidos_faq:
+            faq = find_topic_by_message(message)
+
+            if faq:
+                faq_texto = f"*{faq['titulo']}*\n\n{faq['resumo']}"
+
+                self.set_conversation_state(phone, ConversationState.FAQ_RESPOSTA)
+
+                return ConversationState.FAQ_RESPOSTA, MessageTemplate.format_template(
+                    ConversationState.FAQ_RESPOSTA,
+                    faq_texto=faq_texto
+                )
+
+        # 6. Só depois trata dados de cotação
         if extracted_data:
             campos_cotacao = set(self.REQUIRED_FIELDS.keys())
 
@@ -410,36 +448,6 @@ class ConversationFlow:
                         dados_coletados=self.format_collected_data(phone),
                         dados_faltantes=self.format_missing_data(phone)
                     )
-
-        # ---------------------------------------------------------
-        # 3. FAQ por palavra-chave
-        # Pode rodar em vários estados da conversa, desde que não esteja
-        # em edição, validação final, processamento ou atendimento humano.
-        # ---------------------------------------------------------
-        current_state = self.get_conversation_state(phone)
-
-        estados_permitidos_faq = [
-            ConversationState.INITIAL,
-            ConversationState.MENU_PRINCIPAL,
-            ConversationState.FAQ_RESPOSTA,
-            ConversationState.COTACAO_INICIO,
-            ConversationState.COTACAO_COLETANDO,
-            ConversationState.COTACAO_CONCLUIDA,
-            ConversationState.POS_COTACAO,
-        ]
-
-        if current_state in estados_permitidos_faq:
-            faq = find_topic_by_message(message)
-
-            if faq:
-                faq_texto = f"*{faq['titulo']}*\n\n{faq['resumo']}"
-
-                self.set_conversation_state(phone, ConversationState.FAQ_RESPOSTA)
-
-                return ConversationState.FAQ_RESPOSTA, MessageTemplate.format_template(
-                    ConversationState.FAQ_RESPOSTA,
-                    faq_texto=faq_texto
-                )
 
         # Verificar se usuário quer falar com atendente
         if self._is_handoff_request(message_lower):

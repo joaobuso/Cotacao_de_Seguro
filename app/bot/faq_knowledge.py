@@ -1,7 +1,7 @@
+# -*- coding: utf-8 -*-
 import unicodedata
 import re
 
-# -*- coding: utf-8 -*-
 """
 Base de Conhecimento FAQ - Equinos Seguros
 21 temas com palavras-chave e resumos para resposta automática via IA

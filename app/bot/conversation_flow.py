@@ -218,6 +218,9 @@ class ConversationFlow:
         if last_interaction:
             time_diff = datetime.now() - last_interaction
 
+            logger.info(f"time_diff: {time_diff}")
+            logger.info(f"CONVERSATION_TIMEOUT: {self.CONVERSATION_TIMEOUT}")
+
             # 🔥 TIMEOUT GERAL (10 min)
             if time_diff > self.CONVERSATION_TIMEOUT:
                 logger.info(f"Timeout de conversa ({phone}) - resetando")

@@ -205,42 +205,32 @@ class ConversationFlow:
         self.conversations = {}
         self.ultramsg_api = ultramsg_api
 
+    def is_conversation_expired(self, phone: str) -> bool:
+        """
+        Verifica se a conversa ficou inativa por mais tempo que o permitido.
+        Não atualiza last_interaction aqui.
+        """
+        if phone not in self.conversations:
+            return False
+
+        conv = self.conversations[phone]
+        last_interaction = conv.get("last_interaction")
+
+        if not last_interaction:
+            return False
+
+        time_diff = datetime.now() - last_interaction
+
+        return time_diff > self.CONVERSATION_TIMEOUT
+
     def get_conversation_state(self, phone: str) -> ConversationState:
         if phone not in self.conversations:
             return ConversationState.INITIAL
 
-        conv = self.conversations[phone]
-        last_interaction = conv.get('last_interaction')
-        logger.info(f"last_interaction: {last_interaction}")
-
-        logger.info(f"[STATE] phones em memória: {list(self.conversations.keys())}")
-        logger.info(f"[STATE] phone atual: {phone}")
-
-        if last_interaction:
-            time_diff = datetime.now() - last_interaction
-
-            logger.info(f"time_diff: {time_diff}")
-            logger.info(f"CONVERSATION_TIMEOUT: {self.CONVERSATION_TIMEOUT}")
-
-            # 🔥 TIMEOUT GERAL (10 min)
-            if time_diff > self.CONVERSATION_TIMEOUT:
-                logger.info(f"Timeout de conversa ({phone}) - resetando")
-                if conv['state'] not in [
-                    ConversationState.COTACAO_COLETANDO,
-                    ConversationState.COTACAO_VALIDANDO,
-                    ConversationState.MENU_PRINCIPAL,
-                    ConversationState.FAQ_RESPOSTA
-                ]:
-                    self.reset_conversation(phone)
-                    return ConversationState.INITIAL
-
-            # Timeout de atendente (mantém)
-            if conv['state'] == ConversationState.ATENDENTE_ATIVO:
-                if time_diff > self.AGENT_TIMEOUT:
-                    self.reset_conversation(phone)
-                    return ConversationState.INITIAL
-
-        return conv['state']
+        return self.conversations[phone].get(
+            "state",
+            ConversationState.INITIAL
+        )
 
     def set_conversation_state(self, phone: str, state: ConversationState):
         if phone not in self.conversations:
@@ -355,12 +345,26 @@ class ConversationFlow:
         Processa a entrada do usuário e retorna o próximo estado e mensagem
         """
 
-        # Sempre atualizar interação
-        if phone in self.conversations:
-            self.conversations[phone]['last_interaction'] = datetime.now()
+        # ---------------------------------------------------------
+        # 0. Verificar timeout antes de atualizar last_interaction
+        # ---------------------------------------------------------
+        if self.is_conversation_expired(phone):
+            logger.info(f"Timeout de conversa ({phone}) - resetando e enviando saudação")
+            self.reset_conversation(phone)
+
+            # Após reset, envia saudação novamente
+            self.set_conversation_state(phone, ConversationState.MENU_PRINCIPAL)
+
+            return ConversationState.MENU_PRINCIPAL, MessageTemplate.get_template(
+                ConversationState.INITIAL
+            )
 
         current_state = self.get_conversation_state(phone)
         message_lower = message.lower().strip()
+
+        # Agora sim atualiza a última interação
+        if phone in self.conversations:
+            self.conversations[phone]["last_interaction"] = datetime.now()
 
         # 🔥 Se está validando, comandos 1 e 2 têm prioridade
         if current_state == ConversationState.COTACAO_VALIDANDO:

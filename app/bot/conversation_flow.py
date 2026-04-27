@@ -211,6 +211,7 @@ class ConversationFlow:
 
         conv = self.conversations[phone]
         last_interaction = conv.get('last_interaction')
+        logger.info(f"last_interaction: {last_interaction}")
 
         logger.info(f"[STATE] phones em memória: {list(self.conversations.keys())}")
         logger.info(f"[STATE] phone atual: {phone}")

@@ -39,10 +39,7 @@ class MessageTemplate:
 
     TEMPLATES = {
         ConversationState.INITIAL: """*Olá! Bem-vindo à Equinos Seguros!* 🐴
-
-Sou seu assistente virtual e estou aqui para ajudá-lo.
-
-*Como posso te ajudar hoje?*
+Você está falando com o assistente virtual da corretora especializada em seguro para cavalos.
 
 Digite o número da opção desejada:
 
@@ -50,11 +47,11 @@ Digite o número da opção desejada:
 *2* - Como funciona o seguro para equinos
 *3* - Qual valor do seguro
 
-_Você também pode digitar *atendente* a qualquer momento para falar com uma pessoa._""",
+_Para falar com nossa equipe (segunda a sexta, das 9h às 18h), digite atendente._""",
 
         ConversationState.FAQ_RESPOSTA: """{faq_texto}
 
----
+
 *Posso ajudar com mais alguma coisa?*
 
 *1* - Iniciar cotação de seguro
@@ -62,14 +59,12 @@ _Você também pode digitar *atendente* a qualquer momento para falar com uma pe
 
 _Ou digite sua dúvida que tentarei responder._""",
 
-        ConversationState.COTACAO_INICIO: """*Ótimo! Vamos iniciar sua cotação de seguro.* 🐴
+        ConversationState.COTACAO_INICIO: """*Ótimo! Vamos iniciar sua cotação de seguro de vida do seu animal.* 🐴
 
-Para gerar uma cotação personalizada, preciso de algumas informações:
-
-*DADOS NECESSÁRIOS:*
+Para gerar uma cotação personalizada, preciso coletar algumas informações sobre você e sobre o animal. Seguem os dados necessários:
 
 *Dados do Solicitante:*
-• Nome Completo
+• Nome
 
 *Dados do Animal:*
 • Nome do Animal
@@ -80,9 +75,8 @@ Para gerar uma cotação personalizada, preciso de algumas informações:
 • Utilização (lazer, salto, laço, etc.)
 
 *Endereço da Cocheira:*
-• UF (Estado)
-
-_Pode enviar todos os dados de uma vez ou aos poucos, como preferir!_""",
+• UF (Estado onde o cavalo fica alojado)
+""",
 
         ConversationState.COTACAO_COLETANDO: """*Obrigado pelas informações!*
 

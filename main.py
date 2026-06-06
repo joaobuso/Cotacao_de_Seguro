@@ -3,6 +3,9 @@
 Bot de Cotação de Seguros - NOVA VERSÃO
 Portal com API REST para front-end React + Nova conversação com FAQ
 """
+# Cloudflare
+# cd C:\cloudflare
+# cloudflared-windows-amd64 tunnel --url http://localhost:5005
 import re
 import os
 import base64
@@ -908,7 +911,7 @@ logger.info("Iniciando aplicação...")
 init_mongodb()
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 10000))
+    port = int(os.environ.get('PORT', 5005))
     logger.info(f"Iniciando na porta {port}")
     logger.info(f"MongoDB: {'Conectado' if mongodb_connected else 'Desconectado'}")
     logger.info(f"Agentes configurados: {len(parse_agents_from_env())}")

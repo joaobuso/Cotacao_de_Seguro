@@ -6,7 +6,7 @@ Integra o fluxo de conversação com extração de dados e processamento
 
 import logging
 from typing import Dict, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.bot.swissre_automation import SwissReAutomation
 from .conversation_flow import conversation_flow, ConversationState
@@ -33,6 +33,44 @@ class BotHandler:
         """
         try:
             logger.info(f"Processando mensagem de {phone}: {message[:50]}...")
+            current_state = conversation_flow.get_conversation_state(phone)
+            message_lower = (message or "").lower().strip()
+
+            # Bloqueia mensagens enquanto a cotação está sendo processada.
+            # Evita que o "1" de confirmação seja processado novamente.
+            if current_state == ConversationState.COTACAO_PROCESSANDO:
+                logger.info(
+                    f"Mensagem ignorada para {phone}: cotação em processamento. "
+                    f"Mensagem recebida: {message}"
+                )
+
+                return {
+                    "status": "quotation_processing_ignore_message",
+                    "state": current_state.value,
+                    "message": "Cotação em processamento. Mensagem ignorada.",
+                    "should_reply": False
+                }
+
+
+            conv = conversation_flow.conversations.get(phone, {})
+            ignorar_1_ate = conv.get("ignorar_confirmacao_1_ate")
+
+            if (
+                current_state == ConversationState.COTACAO_CONCLUIDA
+                and message_lower == "1"
+                and ignorar_1_ate
+                and datetime.now() < ignorar_1_ate
+            ):
+                logger.info(
+                    f"Mensagem '1' ignorada para {phone}: provável duplicidade da confirmação anterior."
+                )
+
+                return {
+                    "status": "duplicate_confirmation_ignored",
+                    "state": current_state.value,
+                    "message": "Mensagem duplicada ignorada.",
+                    "should_reply": False
+                }
 
             # Salvar mensagem recebida no banco (se disponível)
             if self.db_manager:
@@ -98,6 +136,20 @@ class BotHandler:
         is_control = message_lower in ['0', '1', '2', '3', 'sim', 'nao', 'não']
 
         current_state = conversation_flow.get_conversation_state(phone)
+        # Bloqueia qualquer nova mensagem enquanto a cotação está sendo processada
+        # para evitar reset do fluxo e reenvio da saudação/menu.
+        if current_state == ConversationState.COTACAO_PROCESSANDO:
+            logger.info(
+                f"Mensagem ignorada para {phone}: cotação já está em processamento. "
+                f"Mensagem recebida: {message}"
+            )
+
+            return {
+                "status": "quotation_already_processing",
+                "state": current_state.value,
+                "message": "Cotação já está em processamento",
+                "should_reply": False
+            }
 
         if current_state == ConversationState.COTACAO_EDITANDO:
             extracted_data = {}
@@ -212,8 +264,7 @@ class BotHandler:
                             phone=phone,
                             cotacao_id=cotacao_id,
                             pdf_path=pdf_path,
-                            data=data
-                        )
+                            data=data)
 
                     try:
                         self.db_manager.save_quotation(
@@ -243,6 +294,9 @@ class BotHandler:
                     )
 
                     conversation_flow.set_conversation_state(phone, ConversationState.COTACAO_CONCLUIDA)
+
+                    conversation_flow.conversations[phone]["ignorar_confirmacao_1_ate"] = (datetime.now() + timedelta(seconds=10))
+
                     self._send_response(phone, success_message)
 
                     if self.db_manager:
@@ -271,7 +325,42 @@ class BotHandler:
                     }
 
                 else:
-                    error_msg = result.get('error', 'Erro desconhecido')
+                    if result.get("requires_agent"):
+                        motivo = result.get(
+                            "message",
+                            "A cotação precisa de análise manual por um atendente."
+                        )
+
+                        agent_message = (
+                            "*Sua cotação precisa de análise manual.*\n\n"
+                            f"Motivo: {motivo}\n\n"
+                            "Vou transferir esta conversa para um atendente humano para continuar o atendimento."
+                        )
+
+                        conversation_flow.set_conversation_state(
+                            phone,
+                            ConversationState.AGUARDANDO_ATENDENTE
+                        )
+
+                        self._send_response(phone, agent_message)
+
+                        if self.db_manager:
+                            self.db_manager.save_message(
+                                phone=phone,
+                                sender="bot",
+                                message=agent_message,
+                                message_type="text",
+                                timestamp=datetime.now()
+                            )
+
+                        return {
+                            "status": "quotation_requires_agent",
+                            "state": ConversationState.AGUARDANDO_ATENDENTE.value,
+                            "response": agent_message,
+                            "should_reply": True
+                        }
+
+                    error_msg = result.get('message', 'Erro desconhecido')
                     failure_message = (
                         f"*Não foi possível processar sua cotação.*\n\n"
                         f"Motivo: {error_msg}\n\n"

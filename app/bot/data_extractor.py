@@ -59,7 +59,9 @@ CAMPOS OBRIGATÓRIOS:
 - nome_animal: Nome do animal (cavalo/égua)
 - valor_animal: Valor do animal em reais (apenas números, sem R$ ou pontos)
 - raca: Raça do animal (ex: Quarto de Milha, Mangalarga, Crioulo, etc.)
-- data_nascimento: Data de nascimento no formato DD/MM/AAAA
+- data_nascimento: Data de nascimento do animal. 
+  Se o cliente informar uma data, retornar no formato DD/MM/AAAA.
+  Se o cliente informar apenas idade, como "9 anos", "6 meses", "1 ano e 3 meses", retornar exatamente essa idade no campo data_nascimento no formato DD/MM/AAAA.
 - sexo: Sexo do animal (inteiro, castrado ou fêmea)
 - utilizacao: Utilização do animal (lazer, salto, laço, corrida, vaquejada, tambor, adestramento, hipismo, reprodução, etc.)
 - uf: Estado onde o cavalo fica alojado (sigla com 2 letras, ex: SP, MG, RJ)
@@ -72,6 +74,11 @@ REGRAS IMPORTANTES:
 5. Para valor_animal, extraia apenas números (sem R$, pontos ou vírgulas de milhar)
 6. Para sexo, normalize para: "inteiro", "castrado" ou "fêmea"
 7. Para uf, normalize para sigla de 2 letras maiúsculas
+8. Se o cliente informar idade em vez de data de nascimento, preencha o campo data_nascimento com a idade informada no formato DD/MM/AAAA.
+   Exemplos:
+   - "9 anos" -> "9 anos"
+   - "6 meses" -> "6 meses"
+   - "1 ano e 3 meses" -> "1 ano e 3 meses"
 
 {existing_context}
 
@@ -83,7 +90,8 @@ Exemplo:
   "valor_animal": "50000",
   "raca": "Quarto de Milha",
   "sexo": "inteiro",
-  "uf": "SP"
+  "uf": "SP",
+  "data_nascimento": "data_nascimento"
 }}"""
 
             response = self.client.chat.completions.create(

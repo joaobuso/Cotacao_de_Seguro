@@ -6,6 +6,14 @@ Portal com API REST para front-end React + Nova conversação com FAQ
 # Cloudflare
 # cd C:\cloudflare
 # cloudflared-windows-amd64 tunnel --url http://localhost:5005
+
+
+# Acesso portal local
+# cd web/client
+# pnpm build
+# cd ../..
+# python main.py
+# Acesso http://localhost:5005/portal
 import re
 import os
 import base64
@@ -29,7 +37,8 @@ from ultramsg_adapter import UltraMsgAdapter
 from app.integrations.ultramsg_api import ultramsg_api
 from app.bot.swissre_automation import SwissReAutomation
 from app.bot.faq_knowledge import FAQ_TOPICS
-
+from app.bot.swissre_rules_repository import (get_active_rules,save_active_rules,seed_rules_if_needed)
+from app.bot.faq_repository import (list_faq_topics,create_faq_topic,update_faq_topic,deactivate_faq_topic)
 # Carregar variáveis de ambiente
 load_dotenv()
 
@@ -77,6 +86,43 @@ bot_handler = BotHandler(
 # =========================================================================
 # FUNÇÕES AUXILIARES
 # =========================================================================
+@app.route('/api/swissre/rules', methods=['GET'])
+def api_get_swissre_rules():
+    if 'agent_email' not in session:
+        return jsonify({"error": "Não autenticado"}), 401
+
+    try:
+        seed_rules_if_needed()
+        return jsonify(get_active_rules())
+    except Exception as e:
+        logger.error(f"Erro ao buscar regras SwissRe: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/swissre/rules', methods=['PUT'])
+def api_update_swissre_rules():
+    if 'agent_email' not in session:
+        return jsonify({"error": "Não autenticado"}), 401
+
+    if session.get('agent_role') != 'admin':
+        return jsonify({"error": "Apenas admin pode alterar regras"}), 403
+
+    try:
+        data = request.get_json()
+
+        save_active_rules(
+            data,
+            user_email=session.get('agent_email')
+        )
+
+        return jsonify({
+            "success": True,
+            "message": "Regras SwissRe atualizadas com sucesso"
+        })
+
+    except Exception as e:
+        logger.error(f"Erro ao salvar regras SwissRe: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.get("/reset-client/<phone>")
 def reset_client_endpoint(phone):
@@ -702,18 +748,131 @@ def api_quotations():
 
 @app.route('/api/faq', methods=['GET'])
 def api_faq():
-    """Lista de tópicos FAQ"""
-    result = []
-    for topic_id, topic in FAQ_TOPICS.items():
-        result.append({
-            "id": topic_id,
-            "titulo": topic["titulo"],
-            "resumo": topic["resumo"],
-            "palavras_chave": topic["palavras_chave"][:5]  # Primeiras 5 para exibição
+    """Lista de tópicos FAQ a partir do MongoDB."""
+    if 'agent_email' not in session:
+        return jsonify({"error": "Não autenticado"}), 401
+
+    try:
+        topics = list_faq_topics(include_inactive=True)
+
+        result = []
+        for topic in topics:
+            result.append({
+                "id": int(topic["_id"]),
+                "_id": int(topic["_id"]),
+                "titulo": topic.get("titulo", ""),
+                "resumo": topic.get("resumo", ""),
+                "palavras_chave": topic.get("palavras_chave", []),
+                "ativo": topic.get("ativo", True),
+                "ordem": topic.get("ordem", int(topic["_id"]))
+            })
+
+        return jsonify(result)
+
+    except Exception as e:
+        logger.error(f"Erro ao listar FAQ: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/faq/topics", methods=["GET"])
+def api_list_faq_topics():
+    if "agent_email" not in session:
+        return jsonify({"error": "Não autenticado"}), 401
+
+    try:
+        topics = list_faq_topics(include_inactive=True)
+
+        for topic in topics:
+            topic["_id"] = int(topic["_id"])
+
+        return jsonify(topics)
+
+    except Exception as e:
+        logger.error(f"Erro ao listar FAQ topics: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/faq/topics", methods=["POST"])
+def api_create_faq_topic():
+    if "agent_email" not in session:
+        return jsonify({"error": "Não autenticado"}), 401
+
+    if session.get("agent_role") != "admin":
+        return jsonify({"error": "Apenas admin pode criar tópicos"}), 403
+
+    try:
+        data = request.get_json()
+
+        topic = create_faq_topic(
+            data,
+            user_email=session.get("agent_email")
+        )
+
+        topic["_id"] = int(topic["_id"])
+
+        return jsonify({
+            "success": True,
+            "topic": topic
         })
-    return jsonify(result)
+
+    except Exception as e:
+        logger.error(f"Erro ao criar FAQ topic: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/faq/topics/<int:topic_id>", methods=["PUT"])
+def api_update_faq_topic(topic_id):
+    if "agent_email" not in session:
+        return jsonify({"error": "Não autenticado"}), 401
+
+    if session.get("agent_role") != "admin":
+        return jsonify({"error": "Apenas admin pode alterar tópicos"}), 403
+
+    try:
+        data = request.get_json()
+
+        topic = update_faq_topic(
+            topic_id,
+            data,
+            user_email=session.get("agent_email")
+        )
+
+        if not topic:
+            return jsonify({"error": "Tópico não encontrado"}), 404
+
+        topic["_id"] = int(topic["_id"])
+
+        return jsonify({
+            "success": True,
+            "topic": topic
+        })
+
+    except Exception as e:
+        logger.error(f"Erro ao atualizar FAQ topic: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/faq/topics/<int:topic_id>", methods=["DELETE"])
+def api_delete_faq_topic(topic_id):
+    if "agent_email" not in session:
+        return jsonify({"error": "Não autenticado"}), 401
+
+    if session.get("agent_role") != "admin":
+        return jsonify({"error": "Apenas admin pode remover tópicos"}), 403
+
+    try:
+        deactivate_faq_topic(
+            topic_id,
+            user_email=session.get("agent_email")
+        )
+
+        return jsonify({
+            "success": True,
+            "message": "Tópico inativado com sucesso"
+        })
+
+    except Exception as e:
+        logger.error(f"Erro ao remover FAQ topic: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 # =========================================================================
 # ROTAS PRINCIPAIS (Backend)
 # =========================================================================

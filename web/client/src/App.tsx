@@ -7,6 +7,7 @@ import Conversations from './pages/Conversations'
 import ConversationDetail from './pages/ConversationDetail'
 import Quotations from './pages/Quotations'
 import FaqManager from './pages/FaqManager'
+import SwissReRules from './pages/SwissReRules'
 
 function PrivateRoute({ component: Component }: { component: React.ComponentType }) {
   const { isAuthenticated, loading } = useAuth()
@@ -34,23 +35,37 @@ function AppRoutes() {
     <Router base="/portal">
       <Switch>
         <Route path="/login" component={Login} />
+
         <Route path="/dashboard">
           <PrivateRoute component={Dashboard} />
         </Route>
+
         <Route path="/conversations">
           <PrivateRoute component={Conversations} />
         </Route>
+
         <Route path="/conversations/:phone">
           {(params: { phone: string }) => (
-            <PrivateRoute component={() => <ConversationDetail phone={decodeURIComponent(params.phone)} />} />
+            <PrivateRoute
+              component={() => (
+                <ConversationDetail phone={decodeURIComponent(params.phone)} />
+              )}
+            />
           )}
         </Route>
+
         <Route path="/quotations">
           <PrivateRoute component={Quotations} />
         </Route>
+
         <Route path="/faq">
           <PrivateRoute component={FaqManager} />
         </Route>
+
+        <Route path="/rules">
+          <PrivateRoute component={SwissReRules} />
+        </Route>
+
         <Route path="/">
           <Redirect to="/dashboard" />
         </Route>

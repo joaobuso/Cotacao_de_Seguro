@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
 
 from app.bot.data_extractor import data_extractor
-from app.bot.faq_knowledge import FAQ_TOPICS, find_topic_by_message
+from app.bot.faq_knowledge import find_topic_by_message, get_faq_topic_by_id
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +76,8 @@ Para gerar uma cotação personalizada, preciso coletar algumas informações so
 
 *Endereço da Cocheira:*
 • UF (Estado onde o cavalo fica alojado)
+
+_Digite *0*, *menu*, *voltar* ou *cancelar* para voltar ao menu principal._
 """,
 
         ConversationState.COTACAO_COLETANDO: """*Obrigado pelas informações!*
@@ -88,6 +90,7 @@ Para gerar uma cotação personalizada, preciso coletar algumas informações so
 
 Por favor, envie as informações que ainda faltam.
 
+_Digite *0*, *menu*, *voltar* ou *cancelar* para voltar ao menu principal._
 _Digite *atendente* se precisar de ajuda humana._""",
 
         ConversationState.COTACAO_VALIDANDO: """*Perfeito! Coletei todas as informações necessárias.*
@@ -100,6 +103,7 @@ _Digite *atendente* se precisar de ajuda humana._""",
 Digite:
 *1* - Sim, processar cotação
 *2* - Não, preciso corrigir algo
+*0* - Voltar ao menu principal
 
 _Se precisar corrigir, basta me dizer qual informação está errada._""",
 
@@ -330,13 +334,32 @@ class ConversationFlow:
 
         return "\n".join(lines)
 
+    def _is_back_to_menu_request(self, message: str) -> bool:
+        """Identifica comandos para cancelar/voltar ao menu principal."""
+        message = (message or "").lower().strip()
+        return message in [
+            "0", "zero", "menu", "voltar", "inicio", "início",
+            "cancelar", "sair", "parar", "encerrar cotacao",
+            "encerrar cotação", "cancelar cotacao", "cancelar cotação"
+        ]
+
+    def _return_to_main_menu(self, phone: str) -> Tuple[ConversationState, str]:
+        """Cancela a cotação em andamento, limpa os dados coletados e volta ao menu."""
+        self.reset_conversation(phone)
+        self.set_conversation_state(phone, ConversationState.MENU_PRINCIPAL)
+        return ConversationState.MENU_PRINCIPAL, (MessageTemplate.get_template(ConversationState.INITIAL))
+
     # =========================================================================
     # PROCESSAMENTO PRINCIPAL
     # =========================================================================
 
     def process_user_input(self, phone, message, extracted_data=None):
         """
-        Processa a entrada do usuário e retorna o próximo estado e mensagem
+        Processa a entrada do usuário e retorna o próximo estado e mensagem.
+
+        Ajuste importante:
+        - FAQ por palavra-chave é tratado de forma global antes das rotas específicas
+          de validação/coleta, sem quebrar uma cotação em andamento.
         """
 
         # ---------------------------------------------------------
@@ -346,7 +369,6 @@ class ConversationFlow:
             logger.info(f"Timeout de conversa ({phone}) - resetando e enviando saudação")
             self.reset_conversation(phone)
 
-            # Após reset, envia saudação novamente
             self.set_conversation_state(phone, ConversationState.MENU_PRINCIPAL)
 
             return ConversationState.MENU_PRINCIPAL, MessageTemplate.get_template(
@@ -354,61 +376,51 @@ class ConversationFlow:
             )
 
         current_state = self.get_conversation_state(phone)
-        message_lower = message.lower().strip()
+        message_lower = (message or "").lower().strip()
 
         if phone in self.conversations:
             self.conversations[phone]["last_interaction"] = datetime.now()
 
-        # 1. Validação tem prioridade
-        if current_state == ConversationState.COTACAO_VALIDANDO:
-            return self._process_cotacao_validando(phone, message_lower)
-
-        # 2. Edição tem prioridade
-        if current_state == ConversationState.COTACAO_EDITANDO:
-            return self._process_cotacao_editando(phone, message)
-
-        # 3. Atendente tem prioridade
+        # 1. Atendente tem prioridade sobre FAQ e fluxo
         if self._is_handoff_request(message_lower):
             self.set_conversation_state(phone, ConversationState.AGUARDANDO_ATENDENTE)
             return ConversationState.AGUARDANDO_ATENDENTE, MessageTemplate.get_template(
                 ConversationState.AGUARDANDO_ATENDENTE
             )
 
-        # 4. Menu / voltar
-        if message_lower in ['menu', 'voltar', '0'] and current_state not in [
-            ConversationState.INITIAL,
-            ConversationState.COTACAO_COLETANDO,
-            ConversationState.COTACAO_VALIDANDO,
-            ConversationState.COTACAO_PROCESSANDO
-        ]:
-            self.set_conversation_state(phone, ConversationState.MENU_PRINCIPAL)
-            return ConversationState.MENU_PRINCIPAL, MessageTemplate.get_template(
-                ConversationState.INITIAL
-            )
+        # 2. Menu / voltar tem prioridade sobre FAQ, validação e edição.
+        #    Assim o usuário pode cancelar a cotação mesmo no meio do preenchimento.
+        if self._is_back_to_menu_request(message_lower):
+            estados_sem_cancelamento = {
+                ConversationState.INITIAL,
+                ConversationState.COTACAO_PROCESSANDO,
+                ConversationState.AGUARDANDO_ATENDENTE,
+                ConversationState.ATENDENTE_ATIVO,
+            }
 
-        # 5. FAQ por palavra-chave ANTES do extracted_data
-        estados_permitidos_faq = [
-            ConversationState.INITIAL,
-            ConversationState.MENU_PRINCIPAL,
-            ConversationState.FAQ_RESPOSTA,
-            ConversationState.COTACAO_INICIO,
-            ConversationState.COTACAO_COLETANDO,
-            ConversationState.COTACAO_CONCLUIDA,
-            ConversationState.POS_COTACAO,
-        ]
+            if current_state not in estados_sem_cancelamento:
+                return self._return_to_main_menu(phone)
 
-        if current_state in estados_permitidos_faq:
-            faq = find_topic_by_message(message)
+        # 3. FAQ global por palavra-chave.
+        #    Ex.: "valor", "preço", "susep", "roubo", "vigência" etc.
+        #    Se a cotação estiver em andamento, responde a FAQ mas preserva o estado atual.
+        faq_result = self._try_process_faq_global(
+            phone=phone,
+            message=message,
+            current_state=current_state,
+            message_lower=message_lower
+        )
 
-            if faq:
-                faq_texto = f"*{faq['titulo']}*\n\n{faq['resumo']}"
+        if faq_result:
+            return faq_result
 
-                self.set_conversation_state(phone, ConversationState.FAQ_RESPOSTA)
+        # 4. Validação dos dados da cotação
+        if current_state == ConversationState.COTACAO_VALIDANDO:
+            return self._process_cotacao_validando(phone, message_lower)
 
-                return ConversationState.FAQ_RESPOSTA, MessageTemplate.format_template(
-                    ConversationState.FAQ_RESPOSTA,
-                    faq_texto=faq_texto
-                )
+        # 5. Edição dos dados da cotação
+        if current_state == ConversationState.COTACAO_EDITANDO:
+            return self._process_cotacao_editando(phone, message)
 
         # 6. Só depois trata dados de cotação
         if extracted_data:
@@ -425,6 +437,7 @@ class ConversationFlow:
                 if current_state in [
                     ConversationState.INITIAL,
                     ConversationState.MENU_PRINCIPAL,
+                    ConversationState.FAQ_RESPOSTA,
                     ConversationState.COTACAO_INICIO,
                     ConversationState.COTACAO_COLETANDO,
                     ConversationState.COTACAO_VALIDANDO
@@ -443,26 +456,7 @@ class ConversationFlow:
                         dados_faltantes=self.format_missing_data(phone)
                     )
 
-        # Verificar se usuário quer falar com atendente
-        if self._is_handoff_request(message_lower):
-            self.set_conversation_state(phone, ConversationState.AGUARDANDO_ATENDENTE)
-            return ConversationState.AGUARDANDO_ATENDENTE, MessageTemplate.get_template(
-                ConversationState.AGUARDANDO_ATENDENTE
-            )
-
-        # Verificar se quer voltar ao menu
-        if message_lower in ['menu', 'voltar', '0'] and current_state not in [
-            ConversationState.INITIAL,
-            ConversationState.COTACAO_COLETANDO,
-            ConversationState.COTACAO_VALIDANDO,
-            ConversationState.COTACAO_PROCESSANDO
-        ]:
-            self.set_conversation_state(phone, ConversationState.MENU_PRINCIPAL)
-            return ConversationState.MENU_PRINCIPAL, MessageTemplate.get_template(
-                ConversationState.INITIAL
-            )
-
-        # Processar baseado no estado atual
+        # 7. Processar baseado no estado atual
         if current_state == ConversationState.INITIAL:
             return self._process_initial(phone, message_lower)
 
@@ -494,6 +488,83 @@ class ConversationFlow:
             self.reset_conversation(phone)
             return self._process_initial(phone, message_lower)
 
+    def _try_process_faq_global(self, phone: str, message: str, current_state: ConversationState, message_lower: str):
+        """
+        Tenta responder FAQ em qualquer etapa da conversa sem atrapalhar comandos
+        do fluxo e sem perder o estado de cotação em andamento.
+        """
+
+        # Não deixar respostas FAQ roubarem comandos do fluxo.
+        comandos_fluxo = {
+            '0', '1', '2', '3', '4',
+            'zero', 'sim', 's', 'nao', 'não', 'n', 'ok', 'correto',
+            'corrigir', 'menu', 'voltar', 'inicio', 'início',
+            'cancelar', 'sair', 'parar', 'encerrar cotacao',
+            'encerrar cotação', 'cancelar cotacao', 'cancelar cotação'
+        }
+
+        if not message_lower or message_lower in comandos_fluxo:
+            return None
+
+        # Não muda conversa quando já está com humano ou processando cotação.
+        estados_bloqueados = {
+            ConversationState.COTACAO_PROCESSANDO,
+            ConversationState.AGUARDANDO_ATENDENTE,
+            ConversationState.ATENDENTE_ATIVO,
+        }
+
+        if current_state in estados_bloqueados:
+            return None
+
+        # Durante edição, não tratar nomes de campo como FAQ.
+        # Ex.: se o usuário está corrigindo dados e digita "valor",
+        # o fluxo deve entender como "Valor do Animal", não como FAQ.
+        if current_state == ConversationState.COTACAO_EDITANDO:
+            conv = self.conversations.get(phone, {})
+            if conv.get("campo_edicao"):
+                return None
+
+            campos_edicao = {
+                'nome', 'nome solicitante', 'nome do solicitante',
+                'nome animal', 'nome do animal', 'animal',
+                'valor', 'valor animal', 'valor do animal',
+                'raca', 'raça', 'data', 'data nascimento',
+                'data de nascimento', 'sexo', 'utilizacao',
+                'utilização', 'uf', 'estado'
+            }
+
+            if message_lower in campos_edicao:
+                return None
+
+        faq = find_topic_by_message(message)
+
+        if not faq:
+            return None
+
+        faq_texto = f"*{faq['titulo']}*\n\n{faq['resumo']}"
+        resposta = MessageTemplate.format_template(
+            ConversationState.FAQ_RESPOSTA,
+            faq_texto=faq_texto
+        )
+
+        estados_cotacao_em_andamento = {
+            ConversationState.COTACAO_INICIO,
+            ConversationState.COTACAO_COLETANDO,
+            ConversationState.COTACAO_VALIDANDO,
+            ConversationState.COTACAO_EDITANDO,
+        }
+
+        if current_state in estados_cotacao_em_andamento:
+            # Responde FAQ, mas mantém a cotação no ponto em que estava.
+            return current_state, (
+                resposta +
+                "\n\n_Continuo com sua cotação em andamento. "
+                "Pode enviar os dados que faltam ou confirmar quando quiser._"
+            )
+
+        self.set_conversation_state(phone, ConversationState.FAQ_RESPOSTA)
+        return ConversationState.FAQ_RESPOSTA, resposta
+
     def _is_handoff_request(self, message: str) -> bool:
         keywords = [
             'atendente', 'humano', 'pessoa', 'agente', 'operador',
@@ -509,6 +580,9 @@ class ConversationFlow:
         )
 
     def _process_cotacao_editando(self, phone, message):
+        if self._is_back_to_menu_request(message):
+            return self._return_to_main_menu(phone)
+
         conv = self.conversations.get(phone, {})
         campo_edicao = conv.get("campo_edicao")
 
@@ -595,7 +669,8 @@ class ConversationFlow:
             "5 - Data de Nascimento\n"
             "6 - Sexo\n"
             "7 - Utilização\n"
-            "8 - UF"
+            "8 - UF\n"
+            "0 - Voltar ao menu principal"
         )
     def _process_menu_principal(self, phone: str, message_lower: str, message_original: str) -> Tuple[ConversationState, str]:
         """Processa menu principal com 3 opções + FAQ inteligente"""
@@ -711,6 +786,9 @@ class ConversationFlow:
 
     def _process_cotacao_validando(self, phone: str, message: str) -> Tuple[ConversationState, str]:
         """Processa validação dos dados coletados"""
+        if self._is_back_to_menu_request(message):
+            return self._return_to_main_menu(phone)
+
         if message in ['1', 'sim', 's', 'correto', 'ok']:
             self.set_conversation_state(phone, ConversationState.COTACAO_PROCESSANDO)
             return ConversationState.COTACAO_PROCESSANDO, MessageTemplate.get_template(
@@ -730,7 +808,8 @@ class ConversationFlow:
                 "5 - Data de Nascimento\n"
                 "6 - Sexo\n"
                 "7 - Utilização\n"
-                "8 - UF"
+                "8 - UF\n"
+                "0 - Voltar ao menu principal"
             )
 
         else:
@@ -807,10 +886,12 @@ class ConversationFlow:
     # =========================================================================
 
     def _build_faq_response_by_id(self, topic_id: int) -> str:
-        """Constrói resposta FAQ por ID do tópico"""
-        topic = FAQ_TOPICS.get(topic_id)
+        """Constrói resposta FAQ por ID do tópico consultando o MongoDB."""
+        topic = get_faq_topic_by_id(topic_id)
+
         if topic:
             return f"*{topic['titulo']}*\n\n{topic['resumo']}"
+
         return "Informação não disponível no momento."
 
 

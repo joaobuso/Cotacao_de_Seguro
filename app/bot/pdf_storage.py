@@ -3,10 +3,11 @@ import base64
 from pymongo import MongoClient
 import os
 import logging
+from dotenv import load_dotenv
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
+load_dotenv()
 # Conexão com MongoDB (pega do .env)
 MONGO_URI = os.getenv("MONGO_URI")
 MONGO_DB = os.getenv("DB_NAME")

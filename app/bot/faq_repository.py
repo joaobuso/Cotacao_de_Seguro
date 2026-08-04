@@ -93,14 +93,11 @@ def get_all_keywords_map():
 
 def find_topic_by_message(message: str) -> dict | None:
     """
-    Localiza FAQ por palavra-chave.
+    Localiza FAQ por palavra-chave usando correspondência segura.
 
-    Regras:
-    - Se a palavra-chave completa estiver na mensagem, pontua alto.
-    - Se a mensagem curta estiver dentro da palavra-chave, também pontua.
-      Exemplo: mensagem "morte" encontra "morte do cavalo".
-    - Se houver interseção relevante de palavras, também pontua.
-      Exemplo: mensagem "cólica" encontra "cólica cavalo".
+    Evita que mensagens genéricas como "oi" ou "ok" caiam em FAQ.
+    Também evita match por substring fraca, exemplo:
+    "oi" dentro de "depois".
     """
 
     message_normalized = normalizar_texto(message)
@@ -108,7 +105,52 @@ def find_topic_by_message(message: str) -> dict | None:
     if not message_normalized:
         return None
 
-    message_tokens = set(message_normalized.split())
+    mensagens_genericas = {
+        "oi",
+        "ola",
+        "olá",
+        "bom dia",
+        "boa tarde",
+        "boa noite",
+        "ok",
+        "sim",
+        "nao",
+        "não",
+        "obrigado",
+        "obrigada",
+        "menu",
+        "voltar"
+    }
+
+    if message_normalized in mensagens_genericas:
+        return None
+
+    if len(message_normalized) < 3:
+        return None
+
+    stopwords = {
+        "de", "do", "da", "dos", "das",
+        "e", "em", "no", "na", "nos", "nas",
+        "o", "a", "os", "as",
+        "um", "uma", "uns", "umas",
+        "para", "por", "com", "ao", "aos",
+        "que", "qual", "quais",
+        "meu", "minha", "meus", "minhas",
+        "seu", "sua", "seus", "suas",
+        "voce", "voces", "você", "vocês"
+    }
+
+    def tokens_relevantes(texto: str) -> set[str]:
+        return {
+            token
+            for token in texto.split()
+            if len(token) >= 3 and token not in stopwords
+        }
+
+    message_tokens = tokens_relevantes(message_normalized)
+
+    if not message_tokens:
+        return None
 
     best_match = None
     best_score = 0
@@ -122,22 +164,28 @@ def find_topic_by_message(message: str) -> dict | None:
             if not kw_normalized:
                 continue
 
-            kw_tokens = set(kw_normalized.split())
+            kw_tokens = tokens_relevantes(kw_normalized)
 
-            # Caso ideal: palavra-chave inteira dentro da mensagem.
-            if kw_normalized in message_normalized:
+            if not kw_tokens:
+                continue
+
+            # Match exato da frase inteira
+            if message_normalized == kw_normalized:
+                score += 200
+
+            # Palavra-chave completa dentro da mensagem
+            elif kw_normalized in message_normalized:
                 score += 100 + len(kw_tokens)
 
-            # Caso mensagem curta: "morte" dentro de "morte do cavalo".
-            elif message_normalized in kw_normalized:
-                score += 50 + len(message_tokens)
+            # Match por tokens relevantes
+            intersecao = message_tokens.intersection(kw_tokens)
 
-            # Caso por palavras em comum: "cólica" x "cólica cavalo".
-            else:
-                intersecao = message_tokens.intersection(kw_tokens)
+            if intersecao:
+                score += len(intersecao) * 10
 
-                if intersecao:
-                    score += len(intersecao)
+                # Se todos os tokens relevantes da mensagem bateram, reforça.
+                if message_tokens.issubset(kw_tokens):
+                    score += 20
 
         if score > best_score:
             best_score = score
@@ -147,11 +195,10 @@ def find_topic_by_message(message: str) -> dict | None:
                 "resumo": topic.get("resumo", "")
             }
 
-    if best_score >= 1:
+    if best_score >= 10:
         return best_match
 
     return None
-
 
 def get_next_topic_id():
     collection = get_collection()

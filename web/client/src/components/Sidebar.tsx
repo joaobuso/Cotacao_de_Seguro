@@ -2,7 +2,7 @@ import React from 'react'
 import { Settings } from 'lucide-react'
 import { useLocation, Link } from 'wouter'
 import { useAuth } from '../contexts/AuthContext'
-import { LayoutDashboard, MessageSquare, FileText, HelpCircle, LogOut, Shield, User } from 'lucide-react'
+import { LayoutDashboard, MessageSquare, FileText, HelpCircle, LogOut, Shield, User, CalendarClock } from 'lucide-react'
 
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -10,6 +10,7 @@ const navItems = [
   { path: '/quotations', label: 'Cotações', icon: FileText },
   { path: '/rules', label: 'Regras SwissRe', icon: Settings },
   { path: '/faq', label: 'FAQ / Temas', icon: HelpCircle },
+  { path: '/bot-schedule', label: 'Horário do Bot', icon: CalendarClock },
 ]
 
 export default function Sidebar() {

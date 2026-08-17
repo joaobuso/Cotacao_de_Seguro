@@ -8,6 +8,7 @@ import ConversationDetail from './pages/ConversationDetail'
 import Quotations from './pages/Quotations'
 import FaqManager from './pages/FaqManager'
 import SwissReRules from './pages/SwissReRules'
+import BotSchedule from './pages/BotSchedule'
 
 function PrivateRoute({ component: Component }: { component: React.ComponentType }) {
   const { isAuthenticated, loading } = useAuth()
@@ -69,6 +70,11 @@ function AppRoutes() {
         <Route path="/">
           <Redirect to="/dashboard" />
         </Route>
+
+        <Route path="/bot-schedule">
+          <PrivateRoute component={BotSchedule} />
+        </Route>
+
       </Switch>
     </Router>
   )

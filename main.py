@@ -39,6 +39,7 @@ from app.bot.swissre_automation import SwissReAutomation
 from app.bot.faq_knowledge import FAQ_TOPICS
 from app.bot.swissre_rules_repository import (get_active_rules,save_active_rules,seed_rules_if_needed)
 from app.bot.faq_repository import (list_faq_topics,create_faq_topic,update_faq_topic,deactivate_faq_topic)
+from app.bot.bot_schedule_repository import (get_bot_schedule,save_bot_schedule,seed_bot_schedule_if_needed,is_bot_active_now)
 # Carregar variáveis de ambiente
 load_dotenv()
 
@@ -86,6 +87,44 @@ bot_handler = BotHandler(
 # =========================================================================
 # FUNÇÕES AUXILIARES
 # =========================================================================
+@app.route("/api/bot/schedule", methods=["GET"])
+def api_get_bot_schedule():
+    if "agent_email" not in session:
+        return jsonify({"error": "Não autenticado"}), 401
+
+    try:
+        seed_bot_schedule_if_needed()
+        return jsonify(get_bot_schedule())
+    except Exception as e:
+        logger.error(f"Erro ao buscar horários do bot: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/bot/schedule", methods=["PUT"])
+def api_update_bot_schedule():
+    if "agent_email" not in session:
+        return jsonify({"error": "Não autenticado"}), 401
+
+    if session.get("agent_role") != "admin":
+        return jsonify({"error": "Apenas admin pode alterar horários do bot"}), 403
+
+    try:
+        data = request.get_json()
+
+        save_bot_schedule(
+            data,
+            user_email=session.get("agent_email")
+        )
+
+        return jsonify({
+            "success": True,
+            "message": "Horários do bot atualizados com sucesso"
+        })
+
+    except Exception as e:
+        logger.error(f"Erro ao salvar horários do bot: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/swissre/rules', methods=['GET'])
 def api_get_swissre_rules():
     if 'agent_email' not in session:
@@ -591,13 +630,25 @@ def api_conversations():
             if last_ts:
                 last_ts = (last_ts - timedelta(hours=3)).isoformat()
 
+            conversation_status = conversations_collection.find_one(
+                {
+                    "$or": [
+                        {"phone_number": phone},
+                        {"phone": phone}
+                    ]
+                },
+                sort=[("updated_at", -1), ("timestamp", -1)]
+            )
+
+            needs_human = bool(conversation_status.get("needs_human")) if conversation_status else False
+
             result.append({
                 "phone": phone,
                 "phone_display": format_phone_display(phone),
                 "last_message": conv.get("last_message", ""),
                 "last_timestamp": last_ts,
                 "message_count": conv.get("message_count", 0),
-                "needs_human": conv.get("needs_human", False),
+                "needs_human": needs_human,
                 "has_human_response": conv.get("has_human_response", False)
             })
 
@@ -936,6 +987,42 @@ def webhook_ultramsg():
 
         # Salvar mensagem do usuário
         save_message_mongo(phone, "user", message)
+
+        # Verificar se o bot está dentro do horário de atuação
+        bot_active, schedule_info = is_bot_active_now()
+
+        if not bot_active:
+            logger.info(
+                f"Bot fora do horário de atuação para {phone}. "
+                f"Motivo: {schedule_info.get('reason')}"
+            )
+
+            # Marca a conversa para atendimento humano
+            save_conversation_to_db(
+                phone=phone,
+                message=message,
+                response="Mensagem aguardando atendimento humano",
+                message_type="user",
+                needs_human=True
+            )
+
+            schedule = schedule_info.get("schedule", {})
+            should_send_auto_message = schedule.get("sendAutoMessageWhenInactive", False)
+            inactive_message = schedule.get(
+                "inactiveMessage",
+                "No momento, seu atendimento será realizado por um analista humano."
+            )
+
+            if should_send_auto_message:
+                send_ultramsg_message(phone, inactive_message)
+                save_message_mongo(phone, "bot", inactive_message)
+
+            return jsonify({
+                "status": "human_attendance_period",
+                "state": "aguardando_atendente",
+                "message": "Bot fora do horário de atuação. Conversa direcionada para atendimento humano.",
+                "should_reply": should_send_auto_message
+            })
 
         # Processar com bot handler
         result = bot_handler.process_message(phone, message)

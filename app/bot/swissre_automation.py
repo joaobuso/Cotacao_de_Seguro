@@ -1184,7 +1184,7 @@ class SwissReAutomation:
       logger.info("PAYLOAD ENVIADO:")
       logger.info(json.dumps(payload, ensure_ascii=False, indent=2))
 
-      quotation_response = requests.post(API_URL, headers=headers, json=payload, timeout=90)
+      quotation_response = requests.post(API_URL, headers=headers, json=payload, timeout=300)
 
       if not quotation_response.ok:
           try:
@@ -1254,7 +1254,7 @@ class SwissReAutomation:
       }
 
       logger.info(f"Cotacao gerada {contractNumber}")
-      response_doc = requests.post(API_URL_DOCUMENT, headers=headers, json=payload_doc, timeout=90)
+      response_doc = requests.post(API_URL_DOCUMENT, headers=headers, json=payload_doc, timeout=300)
 
       logger.info(f"Status Code documento: {response_doc.status_code}")
 

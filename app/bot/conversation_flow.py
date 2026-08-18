@@ -357,9 +357,9 @@ class ConversationFlow:
         """
         Processa a entrada do usuário e retorna o próximo estado e mensagem.
 
-        Ajuste importante:
-        - FAQ por palavra-chave é tratado de forma global antes das rotas específicas
-          de validação/coleta, sem quebrar uma cotação em andamento.
+        Regra importante:
+        - Dados de cotação têm prioridade sobre FAQ.
+        - FAQ por palavra-chave só é tratado quando a mensagem não contém dados de cotação.
         """
 
         # ---------------------------------------------------------
@@ -388,6 +388,8 @@ class ConversationFlow:
                 ConversationState.AGUARDANDO_ATENDENTE
             )
 
+        
+
         # 2. Menu / voltar tem prioridade sobre FAQ, validação e edição.
         #    Assim o usuário pode cancelar a cotação mesmo no meio do preenchimento.
         if self._is_back_to_menu_request(message_lower):
@@ -400,6 +402,48 @@ class ConversationFlow:
 
             if current_state not in estados_sem_cancelamento:
                 return self._return_to_main_menu(phone)
+
+        # 2.5. Dados de cotação têm prioridade sobre FAQ.
+        # Se a mensagem trouxe dados do animal/solicitante, não deixa FAQ interceptar
+        # palavras como "valor", "endereço", "raça", "sexo", etc.
+        tem_dado_cotacao = False
+
+        if extracted_data:
+            campos_cotacao = set(self.REQUIRED_FIELDS.keys())
+
+            tem_dado_cotacao = any(
+                k in campos_cotacao and extracted_data.get(k)
+                for k in extracted_data.keys()
+            )
+
+        if tem_dado_cotacao:
+            estados_aceitam_dados_cotacao = [
+                ConversationState.INITIAL,
+                ConversationState.MENU_PRINCIPAL,
+                ConversationState.FAQ_RESPOSTA,
+                ConversationState.COTACAO_INICIO,
+                ConversationState.COTACAO_COLETANDO,
+                ConversationState.COTACAO_VALIDANDO
+            ]
+
+            if current_state in estados_aceitam_dados_cotacao:
+                logger.info("FAQ ignorado: mensagem contém dados de cotação.")
+
+                self.update_conversation_data(phone, extracted_data)
+
+                if self.is_data_complete(phone):
+                    self.set_conversation_state(phone, ConversationState.COTACAO_VALIDANDO)
+                    return ConversationState.COTACAO_VALIDANDO, MessageTemplate.format_template(
+                        ConversationState.COTACAO_VALIDANDO,
+                        resumo_completo=self.format_complete_summary(phone)
+                    )
+
+                self.set_conversation_state(phone, ConversationState.COTACAO_COLETANDO)
+                return ConversationState.COTACAO_COLETANDO, MessageTemplate.format_template(
+                    ConversationState.COTACAO_COLETANDO,
+                    dados_coletados=self.format_collected_data(phone),
+                    dados_faltantes=self.format_missing_data(phone)
+                )
 
         # 3. FAQ global por palavra-chave.
         #    Ex.: "valor", "preço", "susep", "roubo", "vigência" etc.
@@ -422,39 +466,6 @@ class ConversationFlow:
         if current_state == ConversationState.COTACAO_EDITANDO:
             return self._process_cotacao_editando(phone, message)
 
-        # 6. Só depois trata dados de cotação
-        if extracted_data:
-            campos_cotacao = set(self.REQUIRED_FIELDS.keys())
-
-            tem_dado_cotacao = any(
-                k in campos_cotacao and extracted_data.get(k)
-                for k in extracted_data.keys()
-            )
-
-            if tem_dado_cotacao:
-                self.update_conversation_data(phone, extracted_data)
-
-                if current_state in [
-                    ConversationState.INITIAL,
-                    ConversationState.MENU_PRINCIPAL,
-                    ConversationState.FAQ_RESPOSTA,
-                    ConversationState.COTACAO_INICIO,
-                    ConversationState.COTACAO_COLETANDO,
-                    ConversationState.COTACAO_VALIDANDO
-                ]:
-                    if self.is_data_complete(phone):
-                        self.set_conversation_state(phone, ConversationState.COTACAO_VALIDANDO)
-                        return ConversationState.COTACAO_VALIDANDO, MessageTemplate.format_template(
-                            ConversationState.COTACAO_VALIDANDO,
-                            resumo_completo=self.format_complete_summary(phone)
-                        )
-
-                    self.set_conversation_state(phone, ConversationState.COTACAO_COLETANDO)
-                    return ConversationState.COTACAO_COLETANDO, MessageTemplate.format_template(
-                        ConversationState.COTACAO_COLETANDO,
-                        dados_coletados=self.format_collected_data(phone),
-                        dados_faltantes=self.format_missing_data(phone)
-                    )
 
         # 7. Processar baseado no estado atual
         if current_state == ConversationState.INITIAL:
@@ -472,17 +483,11 @@ class ConversationFlow:
         elif current_state == ConversationState.COTACAO_COLETANDO:
             return self._process_cotacao_coletando(phone, message)
 
-        elif current_state == ConversationState.COTACAO_VALIDANDO:
-            return self._process_cotacao_validando(phone, message_lower)
-
         elif current_state == ConversationState.COTACAO_CONCLUIDA:
             return self._process_cotacao_concluida(phone, message_lower)
 
         elif current_state == ConversationState.POS_COTACAO:
             return self._process_pos_cotacao(phone, message_lower, message)
-
-        elif current_state == ConversationState.COTACAO_EDITANDO:
-            return self._process_cotacao_editando(phone, message)
 
         else:
             self.reset_conversation(phone)

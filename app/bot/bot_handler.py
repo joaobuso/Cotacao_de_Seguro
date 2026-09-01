@@ -249,162 +249,25 @@ class BotHandler:
                     timestamp=datetime.now()
                 )
 
-            # Executar automação SwissRe (se disponível)
-            if self.swissre_automation:
-                logger.info(f"Iniciando automação SwissRe para {phone}")
-
-                result = SwissReAutomation.generate_quotation_pdf(data)
-
-                if result.get('success'):
-                    pdf_path = result.get('pdf_path')
-                    cotacao_id = result.get('quotation_number')
-
-                    if self.db_manager and pdf_path:
-                        self.db_manager.save_quotation_pdf(
-                            phone=phone,
-                            cotacao_id=cotacao_id,
-                            pdf_path=pdf_path,
-                            data=data)
-
-                    try:
-                        self.db_manager.save_quotation(
-                            phone=phone,
-                            client_data=data,
-                            pdf_path=pdf_path,
-                            status='completed',
-                            completed_by='bot'
-                        )
-                        logger.info(f"Cotação {cotacao_id} registrada na collection quotations")
-                    except Exception as e:
-                        logger.error(f"Erro ao salvar cotação no portal: {str(e)}")
-
-                    # Enviar PDF via WhatsApp
-                    if self.ultramsg_api and pdf_path:
-                        caption = f"Sua cotação {cotacao_id} foi gerada com sucesso!"
-                        self.ultramsg_api.send_document(phone, pdf_path, caption)
-
-                    success_message = (
-                        f"*Cotação #{cotacao_id} concluída com sucesso!*\n\n"
-                        f"O documento PDF foi enviado acima.\n\n"
-                        f"*Deseja mais alguma informação?*\n\n"
-                        f"Digite:\n"
-                        f"*1* - Fazer nova cotação\n"
-                        f"*2* - Falar com atendente\n"
-                        f"*3* - Encerrar atendimento"
-                    )
-
-                    conversation_flow.set_conversation_state(phone, ConversationState.COTACAO_CONCLUIDA)
-
-                    conversation_flow.conversations[phone]["ignorar_confirmacao_1_ate"] = (datetime.now() + timedelta(seconds=10))
-
-                    self._send_response(phone, success_message)
-
-                    if self.db_manager:
-                        self.db_manager.save_message(
-                            phone=phone,
-                            sender="bot",
-                            message=success_message,
-                            message_type="text",
-                            timestamp=datetime.now()
-                        )
-
-                        conversation_flow.add_cotacao_realizada(phone, {
-                            'cotacao_id': cotacao_id,
-                            'data': data,
-                            'pdf_path': pdf_path,
-                            'timestamp': datetime.now().isoformat()
-                        })
-
-                    return {
-                        "status": "quotation_success",
-                        "state": ConversationState.COTACAO_CONCLUIDA.value,
-                        "cotacao_id": cotacao_id,
-                        "pdf_path": pdf_path,
-                        "response": success_message,
-                        "should_reply": True
-                    }
-
-                else:
-                    if result.get("requires_agent"):
-                        motivo = result.get(
-                            "message",
-                            "A cotação precisa de análise manual por um atendente."
-                        )
-
-                        agent_message = (
-                            "*Sua cotação precisa de análise manual.*\n\n"
-                            f"Motivo: {motivo}\n\n"
-                            "Vou transferir esta conversa para um atendente humano para continuar o atendimento."
-                        )
-
-                        conversation_flow.set_conversation_state(
-                            phone,
-                            ConversationState.AGUARDANDO_ATENDENTE
-                        )
-
-                        self._send_response(phone, agent_message)
-
-                        if self.db_manager:
-                            self.db_manager.save_message(
-                                phone=phone,
-                                sender="bot",
-                                message=agent_message,
-                                message_type="text",
-                                timestamp=datetime.now()
-                            )
-
-                        return {
-                            "status": "quotation_requires_agent",
-                            "state": ConversationState.AGUARDANDO_ATENDENTE.value,
-                            "response": agent_message,
-                            "should_reply": True
-                        }
-
-                    error_msg = result.get('message', 'Erro desconhecido')
-                    failure_message = (
-                        f"*Não foi possível processar sua cotação.*\n\n"
-                        f"Motivo: {error_msg}\n\n"
-                        f"Por favor, tente novamente ou fale com um atendente.\n\n"
-                        f"Digite:\n"
-                        f"*1* - Tentar novamente\n"
-                        f"*2* - Falar com atendente"
-                    )
-
-                    conversation_flow.set_conversation_state(phone, ConversationState.COTACAO_COLETANDO)
-                    self._send_response(phone, failure_message)
-
-                    if self.db_manager:
-                        self.db_manager.save_message(
-                            phone=phone,
-                            sender="bot",
-                            message=failure_message,
-                            message_type="text",
-                            timestamp=datetime.now()
-                        )
-
-                    return {
-                        "status": "quotation_failed",
-                        "state": ConversationState.COTACAO_COLETANDO.value,
-                        "error": error_msg,
-                        "response": failure_message,
-                        "should_reply": True
-                    }
-
-            else:
-                # SwissRe não disponível, simular sucesso
+            # Executar automação SwissRe
+            if not self.swissre_automation:
                 logger.warning("SwissRe automation não disponível, simulando sucesso")
 
                 success_message = (
-                    f"*Cotação simulada com sucesso!*\n\n"
-                    f"Em produção, o PDF seria gerado aqui.\n\n"
-                    f"*Deseja mais alguma informação?*\n\n"
-                    f"Digite:\n"
-                    f"*1* - Fazer nova cotação\n"
-                    f"*2* - Falar com atendente\n"
-                    f"*3* - Encerrar atendimento"
+                    "*Cotação simulada com sucesso!*\n\n"
+                    "Em produção, o PDF seria gerado aqui.\n\n"
+                    "*Deseja mais alguma informação?*\n\n"
+                    "Digite:\n"
+                    "*1* - Fazer nova cotação\n"
+                    "*2* - Falar com atendente\n"
+                    "*3* - Encerrar atendimento"
                 )
 
-                conversation_flow.set_conversation_state(phone, ConversationState.COTACAO_CONCLUIDA)
+                conversation_flow.set_conversation_state(
+                    phone,
+                    ConversationState.COTACAO_CONCLUIDA
+                )
+
                 self._send_response(phone, success_message)
 
                 return {
@@ -414,14 +277,263 @@ class BotHandler:
                     "should_reply": True
                 }
 
+            logger.info(f"Iniciando automação SwissRe para {phone}")
+
+            result = SwissReAutomation.generate_quotation_pdf(data)
+
+            logger.info(
+                "Resultado automação SwissRe para %s: success=%s, pdf_pending=%s, "
+                "requires_agent=%s, quotation_number=%s, pdf_path=%s, document_error=%s, "
+                "document_status_code=%s",
+                phone,
+                result.get("success"),
+                result.get("pdf_pending"),
+                result.get("requires_agent"),
+                result.get("quotation_number"),
+                result.get("pdf_path"),
+                result.get("document_error"),
+                result.get("document_status_code")
+            )
+
+            # PDF pendente precisa vir ANTES do success,
+            # porque nesse caso success=True e pdf_pending=True.
+            if result.get("pdf_pending"):
+                cotacao_id = result.get("quotation_number")
+                motivo_pdf = (
+                    result.get("document_error")
+                    or result.get("message")
+                    or "PDF ainda não disponível na SwissRe."
+                )
+
+                logger.warning(
+                    "PDF pendente para cotação %s | phone=%s | issuance_id=%s | "
+                    "document_status_code=%s | erro=%s",
+                    cotacao_id,
+                    phone,
+                    result.get("issuance_id"),
+                    result.get("document_status_code"),
+                    motivo_pdf
+                )
+
+                try:
+                    if self.db_manager:
+                        self.db_manager.save_quotation(
+                            phone=phone,
+                            client_data=data,
+                            pdf_path=None,
+                            status="pdf_pending",
+                            completed_by="bot"
+                        )
+                        logger.info(
+                            "Cotação %s registrada no portal com status pdf_pending",
+                            cotacao_id
+                        )
+                except Exception as e:
+                    logger.error(
+                        "Erro ao salvar cotação PDF pendente no portal: %s",
+                        str(e),
+                        exc_info=True
+                    )
+
+                pending_message = (
+                    f"*Cotação #{cotacao_id} criada com sucesso!* ✅\n\n"
+                    "A cotação foi gerada na seguradora, porém o PDF ainda não ficou disponível "
+                    "por timeout na geração do documento.\n\n"
+                    "Vou encaminhar esta conversa para um atendente acompanhar a emissão do PDF "
+                    "e enviar a proposta assim que o documento estiver disponível."
+                )
+
+                conversation_flow.set_conversation_state(
+                    phone,
+                    ConversationState.AGUARDANDO_ATENDENTE
+                )
+
+                self._send_response(phone, pending_message)
+
+                if self.db_manager:
+                    self.db_manager.save_message(
+                        phone=phone,
+                        sender="bot",
+                        message=pending_message,
+                        message_type="text",
+                        timestamp=datetime.now()
+                    )
+
+                conversation_flow.add_cotacao_realizada(phone, {
+                    "cotacao_id": cotacao_id,
+                    "data": data,
+                    "pdf_path": None,
+                    "pdf_pending": True,
+                    "document_error": motivo_pdf,
+                    "timestamp": datetime.now().isoformat()
+                })
+
+                return {
+                    "status": "quotation_pdf_pending",
+                    "state": ConversationState.AGUARDANDO_ATENDENTE.value,
+                    "cotacao_id": cotacao_id,
+                    "pdf_path": None,
+                    "error": motivo_pdf,
+                    "response": pending_message,
+                    "should_reply": True
+                }
+
+            # Sucesso real: cotação criada + PDF gerado
+            if result.get("success"):
+                pdf_path = result.get("pdf_path")
+                cotacao_id = result.get("quotation_number")
+
+                if self.db_manager and pdf_path:
+                    self.db_manager.save_quotation_pdf(
+                        phone=phone,
+                        cotacao_id=cotacao_id,
+                        pdf_path=pdf_path,
+                        data=data
+                    )
+
+                try:
+                    if self.db_manager:
+                        self.db_manager.save_quotation(
+                            phone=phone,
+                            client_data=data,
+                            pdf_path=pdf_path,
+                            status="completed",
+                            completed_by="bot"
+                        )
+                    logger.info(f"Cotação {cotacao_id} registrada na collection quotations")
+                except Exception as e:
+                    logger.error(f"Erro ao salvar cotação no portal: {str(e)}")
+
+                # Enviar PDF via WhatsApp
+                if self.ultramsg_api and pdf_path:
+                    caption = f"Sua cotação {cotacao_id} foi gerada com sucesso!"
+                    self.ultramsg_api.send_document(phone, pdf_path, caption)
+
+                success_message = (
+                    f"*Cotação #{cotacao_id} concluída com sucesso!*\n\n"
+                    "O documento PDF foi enviado acima.\n\n"
+                    "*Deseja mais alguma informação?*\n\n"
+                    "Digite:\n"
+                    "*1* - Fazer nova cotação\n"
+                    "*2* - Falar com atendente\n"
+                    "*3* - Encerrar atendimento"
+                )
+
+                conversation_flow.set_conversation_state(
+                    phone,
+                    ConversationState.COTACAO_CONCLUIDA
+                )
+
+                conversation_flow.conversations[phone]["ignorar_confirmacao_1_ate"] = (
+                    datetime.now() + timedelta(seconds=10)
+                )
+
+                self._send_response(phone, success_message)
+
+                if self.db_manager:
+                    self.db_manager.save_message(
+                        phone=phone,
+                        sender="bot",
+                        message=success_message,
+                        message_type="text",
+                        timestamp=datetime.now()
+                    )
+
+                conversation_flow.add_cotacao_realizada(phone, {
+                    "cotacao_id": cotacao_id,
+                    "data": data,
+                    "pdf_path": pdf_path,
+                    "timestamp": datetime.now().isoformat()
+                })
+
+                return {
+                    "status": "quotation_success",
+                    "state": ConversationState.COTACAO_CONCLUIDA.value,
+                    "cotacao_id": cotacao_id,
+                    "pdf_path": pdf_path,
+                    "response": success_message,
+                    "should_reply": True
+                }
+
+            # Falha que exige atendente
+            if result.get("requires_agent"):
+                motivo = result.get(
+                    "message",
+                    "A cotação precisa de análise manual por um atendente."
+                )
+
+                agent_message = (
+                    "*Sua cotação precisa de análise manual.*\n\n"
+                    f"Motivo: {motivo}\n\n"
+                    "Vou transferir esta conversa para um atendente humano para continuar o atendimento."
+                )
+
+                conversation_flow.set_conversation_state(
+                    phone,
+                    ConversationState.AGUARDANDO_ATENDENTE
+                )
+
+                self._send_response(phone, agent_message)
+
+                if self.db_manager:
+                    self.db_manager.save_message(
+                        phone=phone,
+                        sender="bot",
+                        message=agent_message,
+                        message_type="text",
+                        timestamp=datetime.now()
+                    )
+
+                return {
+                    "status": "quotation_requires_agent",
+                    "state": ConversationState.AGUARDANDO_ATENDENTE.value,
+                    "response": agent_message,
+                    "should_reply": True
+                }
+
+            # Falha comum
+            error_msg = result.get("message", "Erro desconhecido")
+            failure_message = (
+                "*Não foi possível processar sua cotação.*\n\n"
+                f"Motivo: {error_msg}\n\n"
+                "Por favor, tente novamente ou fale com um atendente.\n\n"
+                "Digite:\n"
+                "*1* - Tentar novamente\n"
+                "*2* - Falar com atendente"
+            )
+
+            conversation_flow.set_conversation_state(
+                phone,
+                ConversationState.COTACAO_COLETANDO
+            )
+
+            self._send_response(phone, failure_message)
+
+            if self.db_manager:
+                self.db_manager.save_message(
+                    phone=phone,
+                    sender="bot",
+                    message=failure_message,
+                    message_type="text",
+                    timestamp=datetime.now()
+                )
+
+            return {
+                "status": "quotation_failed",
+                "state": ConversationState.COTACAO_COLETANDO.value,
+                "error": error_msg,
+                "response": failure_message,
+                "should_reply": True
+            }
+
         except Exception as e:
             logger.error(f"Erro ao processar cotação: {str(e)}", exc_info=True)
 
             error_message = (
-                f"*Erro ao processar cotação*\n\n"
-                f"Desculpe, ocorreu um erro inesperado.\n\n"
-                f"Um atendente irá entrar em contato com você em breve.\n\n"
-                f"Digite 'atendente' para falar com um humano agora."
+                "*Erro ao processar cotação*\n\n"
+                "Desculpe, ocorreu um erro inesperado.\n\n"
+                "Um atendente irá entrar em contato com você em breve.\n\n"
+                "Digite 'atendente' para falar com um humano agora."
             )
 
             self._send_response(phone, error_message)

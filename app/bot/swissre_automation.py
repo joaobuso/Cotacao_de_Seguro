@@ -48,15 +48,47 @@ API_URL_DOCUMENT = os.getenv(
 
 class SwissReAutomation:
     @staticmethod
-    def gerar_documento_com_retry(url, headers, payload, tentativas=4):
+    def gerar_documento_com_retry(
+        url,
+        headers,
+        payload,
+        tentativas=4,
+        timeout_segundos=60,
+        contexto=None
+    ):
         tempos_espera = [10, 20, 40, 60]
-
         ultimo_erro = None
+        contexto = contexto or {}
+
+        contract_number = contexto.get("contractNumber") or payload.get("contractNumber")
+        issuance_id = contexto.get("issuanceId") or payload.get("issuanceId")
+
+        headers_log = {
+            "Content-Type": headers.get("Content-Type"),
+            "Authorization": "Bearer ***"
+        }
+
+        logger.info(
+            "Iniciando geração de documento SwissRe | cotacao=%s | issuanceId=%s | "
+            "url=%s | tentativas=%s | timeout=%ss | payload=%s | headers=%s",
+            contract_number,
+            issuance_id,
+            url,
+            tentativas,
+            timeout_segundos,
+            json.dumps(payload, ensure_ascii=False),
+            headers_log
+        )
 
         for tentativa in range(1, tentativas + 1):
+            inicio = time.perf_counter()
+
             try:
                 logger.info(
-                    "Tentando gerar documento SwissRe. Tentativa %s/%s",
+                    "Tentando gerar documento SwissRe | cotacao=%s | issuanceId=%s | "
+                    "tentativa=%s/%s",
+                    contract_number,
+                    issuance_id,
                     tentativa,
                     tentativas
                 )
@@ -65,62 +97,215 @@ class SwissReAutomation:
                     url,
                     headers=headers,
                     json=payload,
-                    timeout=120
+                    timeout=timeout_segundos
                 )
 
-                logger.info("Status Code documento: %s", response.status_code)
+                duracao = round(time.perf_counter() - inicio, 2)
+
+                content_type = response.headers.get("Content-Type", "")
+                content_length = response.headers.get("Content-Length")
+                cloudflare_ray = response.headers.get("CF-Ray") or response.headers.get("cf-ray")
+                tamanho_bytes = len(response.content or b"")
+
+                logger.info(
+                    "Resposta documento SwissRe | cotacao=%s | tentativa=%s/%s | "
+                    "status=%s | duracao=%ss | content_type=%s | content_length=%s | "
+                    "bytes=%s | cf_ray=%s",
+                    contract_number,
+                    tentativa,
+                    tentativas,
+                    response.status_code,
+                    duracao,
+                    content_type,
+                    content_length,
+                    tamanho_bytes,
+                    cloudflare_ray
+                )
 
                 if response.status_code == 200:
+                    parece_pdf = (
+                        response.content.startswith(b"%PDF")
+                        or "pdf" in content_type.lower()
+                    )
+
+                    if parece_pdf and tamanho_bytes > 0:
+                        logger.info(
+                            "Documento SwissRe gerado com sucesso | cotacao=%s | "
+                            "bytes=%s | content_type=%s",
+                            contract_number,
+                            tamanho_bytes,
+                            content_type
+                        )
+
+                        return {
+                            "success": True,
+                            "response": response,
+                            "status_code": response.status_code,
+                            "content_type": content_type,
+                            "bytes": tamanho_bytes,
+                            "duration_seconds": duracao
+                        }
+
+                    preview = ""
+                    try:
+                        preview = response.text[:1000]
+                    except Exception:
+                        preview = str(response.content[:200])
+
+                    ultimo_erro = (
+                        f"HTTP 200 recebido, mas resposta não parece PDF. "
+                        f"Content-Type={content_type}, bytes={tamanho_bytes}"
+                    )
+
+                    logger.error(
+                        "%s | cotacao=%s | preview=%s",
+                        ultimo_erro,
+                        contract_number,
+                        preview
+                    )
+
                     return {
-                        "success": True,
-                        "response": response
+                        "success": False,
+                        "error": ultimo_erro,
+                        "status_code": response.status_code,
+                        "content_type": content_type,
+                        "bytes": tamanho_bytes,
+                        "body": preview,
+                        "duration_seconds": duracao
                     }
 
-                # 524, 502, 503, 504 são erros temporários
+                preview = ""
+                try:
+                    preview = response.text[:1000]
+                except Exception:
+                    preview = str(response.content[:200])
+
                 if response.status_code in [502, 503, 504, 524]:
-                    ultimo_erro = f"Erro temporário ao gerar documento: HTTP {response.status_code}"
+                    ultimo_erro = (
+                        f"Erro temporário ao gerar documento: HTTP {response.status_code}. "
+                        f"Content-Type={content_type}, CF-Ray={cloudflare_ray}"
+                    )
+
+                    logger.warning(
+                        "%s | cotacao=%s | tentativa=%s/%s | duracao=%ss | preview=%s",
+                        ultimo_erro,
+                        contract_number,
+                        tentativa,
+                        tentativas,
+                        duracao,
+                        preview
+                    )
 
                     if tentativa < tentativas:
                         espera = tempos_espera[min(tentativa - 1, len(tempos_espera) - 1)]
                         logger.warning(
-                            "%s. Aguardando %s segundos antes de tentar novamente.",
-                            ultimo_erro,
-                            espera
+                            "Aguardando %s segundos antes de tentar novamente | cotacao=%s",
+                            espera,
+                            contract_number
                         )
                         time.sleep(espera)
                         continue
 
-                # Erro não temporário
                 return {
                     "success": False,
                     "error": f"Erro ao gerar documento: HTTP {response.status_code}",
                     "status_code": response.status_code,
-                    "body": response.text[:1000]
+                    "content_type": content_type,
+                    "bytes": tamanho_bytes,
+                    "cf_ray": cloudflare_ray,
+                    "body": preview,
+                    "duration_seconds": duracao
                 }
 
-            except requests.exceptions.Timeout:
-                ultimo_erro = "Timeout na requisição de documento"
+            except requests.exceptions.ConnectTimeout:
+                duracao = round(time.perf_counter() - inicio, 2)
+                ultimo_erro = "ConnectTimeout na requisição de documento"
 
-                if tentativa < tentativas:
-                    espera = tempos_espera[min(tentativa - 1, len(tempos_espera) - 1)]
-                    logger.warning(
-                        "%s. Aguardando %s segundos antes de tentar novamente.",
-                        ultimo_erro,
-                        espera
-                    )
-                    time.sleep(espera)
-                    continue
+                logger.warning(
+                    "%s | cotacao=%s | tentativa=%s/%s | duracao=%ss",
+                    ultimo_erro,
+                    contract_number,
+                    tentativa,
+                    tentativas,
+                    duracao,
+                    exc_info=True
+                )
+
+            except requests.exceptions.ReadTimeout:
+                duracao = round(time.perf_counter() - inicio, 2)
+                ultimo_erro = "ReadTimeout na requisição de documento"
+
+                logger.warning(
+                    "%s | cotacao=%s | tentativa=%s/%s | duracao=%ss",
+                    ultimo_erro,
+                    contract_number,
+                    tentativa,
+                    tentativas,
+                    duracao,
+                    exc_info=True
+                )
+
+            except requests.exceptions.Timeout:
+                duracao = round(time.perf_counter() - inicio, 2)
+                ultimo_erro = "Timeout genérico na requisição de documento"
+
+                logger.warning(
+                    "%s | cotacao=%s | tentativa=%s/%s | duracao=%ss",
+                    ultimo_erro,
+                    contract_number,
+                    tentativa,
+                    tentativas,
+                    duracao,
+                    exc_info=True
+                )
+
+            except requests.exceptions.RequestException as e:
+                duracao = round(time.perf_counter() - inicio, 2)
+                ultimo_erro = f"RequestException ao gerar documento: {str(e)}"
+
+                logger.error(
+                    "%s | cotacao=%s | tentativa=%s/%s | duracao=%ss",
+                    ultimo_erro,
+                    contract_number,
+                    tentativa,
+                    tentativas,
+                    duracao,
+                    exc_info=True
+                )
+
+                break
 
             except Exception as e:
-                ultimo_erro = str(e)
-                logger.exception("Erro inesperado ao gerar documento SwissRe")
+                duracao = round(time.perf_counter() - inicio, 2)
+                ultimo_erro = f"Erro inesperado ao gerar documento SwissRe: {str(e)}"
+
+                logger.exception(
+                    "%s | cotacao=%s | tentativa=%s/%s | duracao=%ss",
+                    ultimo_erro,
+                    contract_number,
+                    tentativa,
+                    tentativas,
+                    duracao
+                )
+
                 break
+
+            if tentativa < tentativas:
+                espera = tempos_espera[min(tentativa - 1, len(tempos_espera) - 1)]
+                logger.warning(
+                    "Aguardando %s segundos antes de tentar novamente | cotacao=%s",
+                    espera,
+                    contract_number
+                )
+                time.sleep(espera)
 
         return {
             "success": False,
-            "error": ultimo_erro or "Não foi possível gerar documento após tentativas"
+            "error": ultimo_erro or "Não foi possível gerar documento após tentativas",
+            "status_code": None,
+            "contractNumber": contract_number,
+            "issuanceId": issuance_id
         }
-
     def obter_parametro_geral(rules: dict, chave: str):
         """
         Lê um parâmetro obrigatório da seção general do documento swissre_rules.
@@ -1332,7 +1517,13 @@ class SwissReAutomation:
                 url=API_URL_DOCUMENT,
                 headers=headers,
                 payload=payload_doc,
-                tentativas=4
+                tentativas=4,
+                timeout_segundos=60,
+                contexto={
+                    "contractNumber": contractNumber,
+                    "issuanceId": issuanceId,
+                    "documentTypeId": payload_doc["typeId"]
+                }
             )
 
             if not resultado_documento.get("success"):
@@ -1354,7 +1545,11 @@ class SwissReAutomation:
                     "issuance_id": issuanceId,
                     "document_error": resultado_documento.get("error"),
                     "document_status_code": resultado_documento.get("status_code"),
-                    "document_response": resultado_documento.get("body")
+                    "document_response": resultado_documento.get("body"),
+                    "document_content_type": resultado_documento.get("content_type"),
+                    "document_bytes": resultado_documento.get("bytes"),
+                    "document_cf_ray": resultado_documento.get("cf_ray"),
+                    "document_duration_seconds": resultado_documento.get("duration_seconds"),
                 }
 
             response_doc = resultado_documento["response"]

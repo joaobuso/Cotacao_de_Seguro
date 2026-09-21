@@ -16,6 +16,7 @@ Portal com API REST para front-end React + Nova conversação com FAQ
 # Acesso http://localhost:5005/portal
 import re
 import os
+import json
 import base64
 import logging
 import requests

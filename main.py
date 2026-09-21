@@ -30,11 +30,10 @@ from dotenv import load_dotenv
 from database_manager import db_manager
 from database_adapter import DatabaseAdapter
 
-db_adapter = DatabaseAdapter(db_manager)
-
 from app.bot.bot_handler import BotHandler
 from ultramsg_adapter import UltraMsgAdapter
 from app.integrations.ultramsg_api import ultramsg_api
+from app.integrations.zapi_api import ZApiAPI
 from app.bot.swissre_automation import SwissReAutomation
 from app.bot.faq_knowledge import FAQ_TOPICS
 from app.bot.swissre_rules_repository import (get_active_rules,save_active_rules,seed_rules_if_needed)
@@ -73,13 +72,22 @@ quotations_collection = None
 messages_collection = None
 
 # Criar adaptadores
+# Criar adaptadores
 db_adapter = DatabaseAdapter(db_manager)
-ultramsg_adapter = UltraMsgAdapter(ultramsg_api)
+
+WHATSAPP_PROVIDER = os.getenv("WHATSAPP_PROVIDER", "ultramsg").strip().lower()
+
+if WHATSAPP_PROVIDER == "zapi":
+    whatsapp_adapter = ZApiAPI()
+    logger.info("WhatsApp provider ativo: Z-API")
+else:
+    whatsapp_adapter = UltraMsgAdapter(ultramsg_api)
+    logger.info("WhatsApp provider ativo: UltraMsg")
 
 # Usar adaptadores
 bot_handler = BotHandler(
     db_manager=db_adapter,
-    ultramsg_api=ultramsg_adapter,
+    ultramsg_api=whatsapp_adapter,
     swissre_automation=SwissReAutomation()
 )
 
@@ -172,6 +180,39 @@ def reset_client_endpoint(phone):
 def gerar_cotacao_id():
     return f"{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
 
+
+def send_whatsapp_message(phone, message):
+    """
+    Envia mensagem pelo provider configurado.
+    Suporta UltraMsg ou Z-API.
+    """
+    try:
+        if WHATSAPP_PROVIDER == "zapi":
+            whatsapp_adapter.send_message(phone, message)
+            return True
+
+        return send_ultramsg_message(phone, message)
+
+    except Exception as e:
+        logger.error(f"Erro ao enviar mensagem WhatsApp via {WHATSAPP_PROVIDER}: {str(e)}", exc_info=True)
+        return False
+
+
+def send_whatsapp_document(phone, file_path, caption=""):
+    """
+    Envia documento pelo provider configurado.
+    Suporta UltraMsg ou Z-API.
+    """
+    try:
+        if WHATSAPP_PROVIDER == "zapi":
+            whatsapp_adapter.send_document(phone, file_path, caption)
+            return True
+
+        return send_ultramsg_document(phone, file_path, caption)
+
+    except Exception as e:
+        logger.error(f"Erro ao enviar documento WhatsApp via {WHATSAPP_PROVIDER}: {str(e)}", exc_info=True)
+        return False
 
 def count_user_quotes_today(phone):
     today = datetime.now().strftime("%Y-%m-%d")
@@ -715,7 +756,7 @@ def api_send_message(phone):
         if not message:
             return jsonify({"error": "Mensagem é obrigatória"}), 400
 
-        success = send_ultramsg_message(phone, message)
+        success = send_whatsapp_message(phone, message)
 
         if success:
             save_conversation_to_db(phone, "", message, 'human', session['agent_email'])
@@ -726,7 +767,7 @@ def api_send_message(phone):
                 "message": "Mensagem enviada com sucesso"
             })
         else:
-            return jsonify({"success": False, "message": "Erro ao enviar via UltraMsg"}), 500
+            return jsonify({"success": False, "message": f"Erro ao enviar via {WHATSAPP_PROVIDER}"}), 500
 
     except Exception as e:
         logger.error(f"Erro ao enviar mensagem: {str(e)}")
@@ -752,7 +793,7 @@ Sua proposta personalizada foi processada e será enviada em breve.
 
 Obrigado por escolher a Equinos Seguros! 🐴"""
 
-        send_ultramsg_message(phone, completion_message)
+        send_whatsapp_message(phone, completion_message)
         save_conversation_to_db(phone, "", completion_message, 'human', session['agent_email'])
 
         return jsonify({"success": True, "message": "Cotação finalizada com sucesso"})
@@ -946,7 +987,9 @@ def health_check():
         "timestamp": str(datetime.utcnow()),
         "components": {
             "flask": "ok",
+            "whatsapp_provider": WHATSAPP_PROVIDER,
             "ultramsg": "configured" if ULTRAMSG_TOKEN != 'token_padrao' else "not_configured",
+            "zapi": "configured" if (os.getenv("ZAPI_INSTANCE_ID") and os.getenv("ZAPI_TOKEN") and os.getenv("ZAPI_CLIENT_TOKEN")) else "not_configured",
             "mongodb": "connected" if mongodb_connected else "disconnected"
         },
         "stats": stats
@@ -1014,7 +1057,7 @@ def webhook_ultramsg():
             )
 
             if should_send_auto_message:
-                send_ultramsg_message(phone, inactive_message)
+                send_whatsapp_message(phone, inactive_message)
                 save_message_mongo(phone, "bot", inactive_message)
 
             return jsonify({
@@ -1039,6 +1082,133 @@ def webhook_ultramsg():
         logger.error(f"Erro no webhook: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
+
+@app.route("/webhook/zapi", methods=["POST"])
+def webhook_zapi():
+    """Webhook para mensagens recebidas pela Z-API"""
+    try:
+        payload = request.get_json(silent=True) or {}
+
+        logger.info("Webhook Z-API recebido:")
+        logger.info(json.dumps(payload, ensure_ascii=False)[:3000])
+
+        # Alguns eventos da Z-API vêm com fromMe no topo.
+        # Outros podem vir dentro de "data".
+        data_field = payload.get("data", {})
+        if not isinstance(data_field, dict):
+            data_field = {}
+
+        from_me = (
+            payload.get("fromMe") is True
+            or data_field.get("fromMe") is True
+            or payload.get("fromMe") == "true"
+            or data_field.get("fromMe") == "true"
+        )
+
+        if from_me:
+            return jsonify({
+                "status": "ignored",
+                "reason": "message_from_bot"
+            }), 200
+
+        phone = (
+            payload.get("phone")
+            or payload.get("from")
+            or payload.get("sender")
+            or payload.get("participantPhone")
+            or data_field.get("phone")
+            or data_field.get("from")
+            or data_field.get("sender")
+            or ""
+        )
+
+        phone = str(phone or "")
+        phone = phone.replace("@c.us", "").replace("@g.us", "")
+        phone = re.sub(r"\D", "", phone)
+
+        message = ""
+
+        text_obj = payload.get("text") or data_field.get("text")
+        if isinstance(text_obj, dict):
+            message = text_obj.get("message") or text_obj.get("body") or ""
+
+        if not message:
+            message = (
+                payload.get("message")
+                or payload.get("body")
+                or payload.get("textMessage")
+                or data_field.get("message")
+                or data_field.get("body")
+                or data_field.get("textMessage")
+                or ""
+            )
+
+        message = str(message or "").strip()
+
+        if not phone:
+            return jsonify({
+                "status": "ignored",
+                "reason": "missing_phone"
+            }), 200
+
+        if not message:
+            return jsonify({
+                "status": "ignored",
+                "reason": "empty_message"
+            }), 200
+
+        logger.info(f"Mensagem Z-API de {phone}: {message[:100]}...")
+
+        # Salvar mensagem do usuário
+        save_message_mongo(phone, "user", message)
+
+        # Verificar se o bot está dentro do horário de atuação
+        bot_active, schedule_info = is_bot_active_now()
+
+        if not bot_active:
+            logger.info(
+                f"Bot fora do horário de atuação para {phone}. "
+                f"Motivo: {schedule_info.get('reason')}"
+            )
+
+            save_conversation_to_db(
+                phone=phone,
+                message=message,
+                response="Mensagem aguardando atendimento humano",
+                message_type="user",
+                needs_human=True
+            )
+
+            schedule = schedule_info.get("schedule", {})
+            should_send_auto_message = schedule.get("sendAutoMessageWhenInactive", False)
+            inactive_message = schedule.get(
+                "inactiveMessage",
+                "No momento, seu atendimento será realizado por um analista humano."
+            )
+
+            if should_send_auto_message:
+                send_whatsapp_message(phone, inactive_message)
+                save_message_mongo(phone, "bot", inactive_message)
+
+            return jsonify({
+                "status": "human_attendance_period",
+                "state": "aguardando_atendente",
+                "message": "Bot fora do horário de atuação. Conversa direcionada para atendimento humano.",
+                "should_reply": should_send_auto_message
+            }), 200
+
+        result = bot_handler.process_message(phone, message)
+
+        logger.info(f"result zapi: {result}")
+
+        if isinstance(result, dict) and "response" in result:
+            save_message_mongo(phone, "bot", result["response"])
+
+        return jsonify(result), 200
+
+    except Exception as e:
+        logger.error(f"Erro no webhook Z-API: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
 # =========================================================================
 # ROTAS LEGADAS DO PORTAL (mantidas para compatibilidade)
@@ -1076,13 +1246,13 @@ def agent_send_message():
         if not phone or not message:
             return jsonify({"error": "Telefone e mensagem são obrigatórios"}), 400
 
-        success = send_ultramsg_message(phone, message)
+        success = send_whatsapp_message(phone, message)
 
         if success:
             save_conversation_to_db(phone, "", message, 'human', session['agent_email'])
             return jsonify({"success": True, "message": "Mensagem enviada com sucesso"})
         else:
-            return jsonify({"success": False, "message": "Erro ao enviar via UltraMsg"}), 500
+            return jsonify({"success": False, "message": f"Erro ao enviar via {WHATSAPP_PROVIDER}"}), 500
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1102,7 +1272,7 @@ def agent_complete_quotation():
         save_quotation_to_db(phone, client.get('data', {}), '', 'completed', 'human', session['agent_email'])
 
         completion_message = "*Cotação finalizada por nosso especialista!*\n\nSua proposta personalizada foi processada e será enviada em breve.\n\nObrigado por escolher a Equinos Seguros!"
-        send_ultramsg_message(phone, completion_message)
+        send_whatsapp_message(phone, completion_message)
         save_conversation_to_db(phone, "", completion_message, 'human', session['agent_email'])
 
         return jsonify({"success": True, "message": "Cotação finalizada com sucesso"})

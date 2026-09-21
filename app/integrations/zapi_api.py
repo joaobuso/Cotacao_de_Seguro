@@ -76,6 +76,12 @@ class ZApiAPI:
             timeout=60
         )
 
+        logger.info(
+            "Resposta Z-API send_message | status=%s | body=%s",
+            response.status_code,
+            response.text[:1000]
+        )
+
         if not response.ok:
             logger.error(
                 "Erro Z-API send_message: HTTP %s - %s",
@@ -93,18 +99,18 @@ class ZApiAPI:
 
     def send_document(self, phone: str, file_path: str, caption: str = None):
         """
-        Envia documento PDF.
+        Envia documento PDF pela Z-API.
 
-        Observação:
-        Algumas contas/documentações da Z-API usam endpoint /send-file com:
+        Endpoint correto:
+        /send-document/pdf
+
+        Body:
         {
-          "phone": "...",
-          "document": "base64 ou url",
-          "fileName": "arquivo.pdf"
+            "phone": "...",
+            "document": "data:application/pdf;base64,...",
+            "fileName": "arquivo.pdf",
+            "caption": "opcional"
         }
-
-        Caso a sua instância retorne 404/400, valide na Postman Collection da Z-API
-        qual endpoint de documento está habilitado na sua conta.
         """
         phone = self._normalize_phone(phone)
         file_path = Path(file_path)
@@ -115,9 +121,18 @@ class ZApiAPI:
         mime_type, _ = mimetypes.guess_type(str(file_path))
         mime_type = mime_type or "application/pdf"
 
-        with open(file_path, "rb") as f:
-            encoded = base64.b64encode(f.read()).decode("utf-8")
+        extension = file_path.suffix.replace(".", "").lower() or "pdf"
 
+        # Para PDF, força o endpoint correto da Z-API
+        if extension == "pdf":
+            endpoint = "send-document/pdf"
+        else:
+            endpoint = f"send-document/{extension}"
+
+        with open(file_path, "rb") as f:
+            file_bytes = f.read()
+
+        encoded = base64.b64encode(file_bytes).decode("utf-8")
         base64_document = f"data:{mime_type};base64,{encoded}"
 
         payload = {
@@ -129,13 +144,15 @@ class ZApiAPI:
         if caption:
             payload["caption"] = caption
 
-        url = self._url("send-file")
+        url = self._url(endpoint)
 
         logger.info(
-            "Enviando documento Z-API para %s | arquivo=%s | mime=%s",
+            "Enviando documento Z-API para %s | endpoint=%s | arquivo=%s | mime=%s | bytes=%s",
             phone,
+            endpoint,
             file_path.name,
-            mime_type
+            mime_type,
+            len(file_bytes)
         )
 
         response = requests.post(
@@ -145,17 +162,35 @@ class ZApiAPI:
             timeout=120
         )
 
+        response_text = response.text[:2000]
+
+        logger.info(
+            "Resposta Z-API send_document | status=%s | body=%s",
+            response.status_code,
+            response_text
+        )
+
         if not response.ok:
             logger.error(
                 "Erro Z-API send_document: HTTP %s - %s",
                 response.status_code,
-                response.text[:1000]
+                response_text
             )
             response.raise_for_status()
 
-        logger.info("Documento Z-API enviado para %s: %s", phone, file_path.name)
-
         try:
-            return response.json()
+            response_json = response.json()
         except Exception:
-            return {"status_code": response.status_code, "text": response.text}
+            response_json = {
+                "status_code": response.status_code,
+                "text": response.text
+            }
+
+        logger.info(
+            "Documento Z-API aceito para envio | phone=%s | arquivo=%s | response=%s",
+            phone,
+            file_path.name,
+            response_json
+        )
+
+        return response_json

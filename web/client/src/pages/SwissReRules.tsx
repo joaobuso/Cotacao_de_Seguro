@@ -348,6 +348,33 @@ export default function SwissReRules() {
             <Input label="Código Afinidade" value={rules.general?.codAfinidade || ''} editing={editing} onChange={(v) => updateGeneralField('codAfinidade', v)} />
             <Input label="Plano Padrão" value={rules.general?.codPlanoPadrao || ''} editing={editing} onChange={(v) => updateGeneralField('codPlanoPadrao', v)} />
             <Input label="Plano Simplificado" value={rules.general?.codPlanoSimplificado || ''} editing={editing} onChange={(v) => updateGeneralField('codPlanoSimplificado', v)} />
+
+            <Input
+              label="Comissão do corretor (%)"
+              type="number"
+              value={rules.general?.brokerComission ?? ''}
+              editing={editing}
+              onChange={(v) =>
+                updateGeneralField(
+                  'brokerComission',
+                  v === '' ? '' : Number(v)
+                )
+              }
+            />
+
+            <Input
+              label="Desconto/Agravo SwissRe (%)"
+              type="number"
+              value={rules.general?.discountAndAggrave ?? 0}
+              editing={editing}
+              onChange={(v) =>
+                updateGeneralField(
+                  'discountAndAggrave',
+                  Number(v || 0)
+                )
+              }
+            />
+
           </Grid>
         </Section>
       )

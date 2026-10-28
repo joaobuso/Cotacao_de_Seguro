@@ -1375,7 +1375,10 @@ class SwissReAutomation:
                 "items": [
                     {
                         "ItemActionType": "New",
-                        "DiscountAndAggrave": 0,
+                        "DiscountAndAggrave": SwissReAutomation.to_float(
+                            general_rules.get("discountAndAggrave", 0),
+                            "general.discountAndAggrave"
+                        ),
                         "dynamicFields": [
                             {
                                 "id": "end_nomris",
